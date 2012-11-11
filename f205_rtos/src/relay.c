@@ -7,7 +7,6 @@
 
 #include "relay.h"
 
-
 /*
  * @brief	Initializes the GPIO pins for the relay output, and switches off
  * @note	The GPIO pins and relay assignment are the below
@@ -24,8 +23,7 @@ void RELAY_Init(void)
 	GPIO_InitTypeDef GPIO_InitStruct;
 
 	/* Enable the clock source for the GPIO ports */
-	RCC_AHB1PeriphClockCmd(
-			RCC_AHB1Periph_GPIOB | RCC_AHB1Periph_GPIOC | RCC_AHB1Periph_GPIOD,
+	RCC_AHB1PeriphClockCmd(RCC_AHB1Periph_GPIOB | RCC_AHB1Periph_GPIOC | RCC_AHB1Periph_GPIOD,
 			ENABLE);
 
 	/* Set PB4, PB8, and PB9 to slow pull-down output (REL4, REL3, REL2) */
@@ -48,9 +46,9 @@ void RELAY_Init(void)
 	GPIO_Init(GPIOD, &GPIO_InitStruct);
 
 	/* Reset all bits */
-	GPIO_ResetBits(GPIOB, GPIO_Pin_4 | GPIO_Pin_8 | GPIO_Pin_9);
-	GPIO_ResetBits(GPIOC, GPIO_Pin_13);
-	GPIO_ResetBits(GPIOD, GPIO_Pin_2);
+	GPIO_ResetBits(GPIOB, GPIO_Pin_4 | GPIO_Pin_8 | GPIO_Pin_9 );
+	GPIO_ResetBits(GPIOC, GPIO_Pin_13 );
+	GPIO_ResetBits(GPIOD, GPIO_Pin_2 );
 }
 
 void RELAY_SetMode(RELAYMode_TypeDef Mode, RELAYFanSpeed_TypeDef FanSpeed)
@@ -58,37 +56,53 @@ void RELAY_SetMode(RELAYMode_TypeDef Mode, RELAYFanSpeed_TypeDef FanSpeed)
 	switch(FanSpeed)
 	{
 	case RELAY_FanSpeed_OFF:
-		GPIO_ResetBits(RELAY_FAN1_PORT, RELAY_FAN1_PIN);
-		GPIO_ResetBits(RELAY_FAN2_PORT, RELAY_FAN2_PIN);
-		GPIO_ResetBits(RELAY_FAN3_PORT, RELAY_FAN3_PIN);
+		GPIO_ResetBits(RELAY_FAN1_PORT, RELAY_FAN1_PIN );
+		GPIO_ResetBits(RELAY_FAN2_PORT, RELAY_FAN2_PIN );
+		GPIO_ResetBits(RELAY_FAN3_PORT, RELAY_FAN3_PIN );
 		break;
 
 	case RELAY_FanSpeed_Slow:
-		GPIO_ResetBits(RELAY_FAN2_PORT, RELAY_FAN2_PIN);
-		GPIO_ResetBits(RELAY_FAN3_PORT, RELAY_FAN3_PIN);
-		GPIO_SetBits(RELAY_FAN1_PORT, RELAY_FAN1_PIN);
+		GPIO_ResetBits(RELAY_FAN2_PORT, RELAY_FAN2_PIN );
+		GPIO_ResetBits(RELAY_FAN3_PORT, RELAY_FAN3_PIN );
+		GPIO_SetBits(RELAY_FAN1_PORT, RELAY_FAN1_PIN );
 		break;
 
 	case RELAY_FanSpeed_Normal:
-		GPIO_ResetBits(RELAY_FAN1_PORT, RELAY_FAN1_PIN);
-		GPIO_ResetBits(RELAY_FAN3_PORT, RELAY_FAN3_PIN);
-		GPIO_SetBits(RELAY_FAN2_PORT, RELAY_FAN2_PIN);
+		GPIO_ResetBits(RELAY_FAN1_PORT, RELAY_FAN1_PIN );
+		GPIO_ResetBits(RELAY_FAN3_PORT, RELAY_FAN3_PIN );
+		GPIO_SetBits(RELAY_FAN2_PORT, RELAY_FAN2_PIN );
 		break;
 
 	case RELAY_FanSpeed_Fast:
-		GPIO_ResetBits(RELAY_FAN1_PORT, RELAY_FAN1_PIN);
-		GPIO_ResetBits(RELAY_FAN2_PORT, RELAY_FAN2_PIN);
-		GPIO_SetBits(RELAY_FAN3_PORT, RELAY_FAN3_PIN);
+		GPIO_ResetBits(RELAY_FAN1_PORT, RELAY_FAN1_PIN );
+		GPIO_ResetBits(RELAY_FAN2_PORT, RELAY_FAN2_PIN );
+		GPIO_SetBits(RELAY_FAN3_PORT, RELAY_FAN3_PIN );
 		break;
 
 	default:
-		GPIO_ResetBits(RELAY_FAN1_PORT, RELAY_FAN1_PIN);
-		GPIO_ResetBits(RELAY_FAN2_PORT, RELAY_FAN2_PIN);
-		GPIO_ResetBits(RELAY_FAN3_PORT, RELAY_FAN3_PIN);
-		while(1);
+		GPIO_ResetBits(RELAY_FAN1_PORT, RELAY_FAN1_PIN );
+		GPIO_ResetBits(RELAY_FAN2_PORT, RELAY_FAN2_PIN );
+		GPIO_ResetBits(RELAY_FAN3_PORT, RELAY_FAN3_PIN );
 		break;
 	}
 
-	GPIO_ResetBits(RELAY_COLDWATER_PORT, RELAY_COLDWATER_PIN);
-	GPIO_SetBits(RELAY_HOTWATER_PORT, RELAY_HOTWATER_PIN);
+	if(Mode == RELAY_Mode_Heat)
+	{
+		GPIO_ResetBits(RELAY_COLDWATER_PORT, RELAY_COLDWATER_PIN );
+		GPIO_SetBits(RELAY_HOTWATER_PORT, RELAY_HOTWATER_PIN );
+	}
+	else if(Mode == RELAY_Mode_Cool)
+	{
+		GPIO_SetBits(RELAY_COLDWATER_PORT, RELAY_COLDWATER_PIN );
+		GPIO_ResetBits(RELAY_HOTWATER_PORT, RELAY_HOTWATER_PIN );
+	}
+	else
+	{
+		if(Mode == RELAY_Mode_OFF)
+		{
+			GPIO_ResetBits(RELAY_COLDWATER_PORT, RELAY_COLDWATER_PIN );
+			GPIO_ResetBits(RELAY_HOTWATER_PORT, RELAY_HOTWATER_PIN );
+		}
+	}
+
 }

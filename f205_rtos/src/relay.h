@@ -27,6 +27,7 @@
 
 #define RELAY_Heat(FanSpeed)	RELAY_SetMode(RELAY_Mode_Heat, (FanSpeed))
 #define RELAY_Cool(FanSpeed)	RELAY_SetMode(RELAY_Mode_Cool, (FanSpeed))
+#define RELAY_OFF()				RELAY_SetMode(RELAY_Mode_OFF, RELAY_FanSpeed_OFF)
 
 
 typedef enum
@@ -40,7 +41,8 @@ typedef enum
 typedef enum
 {
 	RELAY_Mode_Heat			= 0x00,
-	RELAY_Mode_Cool			= 0x01
+	RELAY_Mode_Cool			= 0x01,
+	RELAY_Mode_OFF				= 0x02
 } RELAYMode_TypeDef;
 
 void RELAY_Init(void);

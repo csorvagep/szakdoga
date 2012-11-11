@@ -49,6 +49,7 @@ xSemaphoreHandle xMutexTempMemory = NULL;
 #define SIZE_OF_BUFFER 128
 int32_t *psStartOfBuffer = NULL;
 uint8_t uBuffCntr = 0;
+int32_t temp_limit = 0x4e8f0;
 
 extern int16_t DeltaValue;
 
@@ -161,7 +162,7 @@ static void prvMenuTask(void *pvParameters)
 
 	uint32_t temperature;
 	float rt;
-	float t,t2;
+	float t;
 
 	UpdateMenu();
 
@@ -181,27 +182,46 @@ static void prvMenuTask(void *pvParameters)
 			}
 			else if(xReceivedValue.Mode == Queue_Mode_Update)
 			{
-				RTC_TimeToString(time_string, RTC_ShowSeconds_No);
-				DISP_2LineStringWrite(1, 0, time_string);
-				RTC_DateToString(time_string);
-				DISP_StringWrite(2, 0, time_string);
-
-				if(xSemaphoreTake(xMutexTempMemory, (portTickType) 5) == pdTRUE)
+				if(++i != DISPLAY_OFF_TIME)
 				{
-					if(psStartOfBuffer)
-					{
-						temperature = psStartOfBuffer[uBuffCntr];
-						xSemaphoreGive(xMutexTempMemory);
+					RTC_TimeToString(time_string, RTC_ShowSeconds_No);
+					DISP_2LineStringWrite(1, 0, time_string);
+					RTC_DateToString(time_string);
+					DISP_StringWrite(2, 0, time_string);
 
-						rt = 27.E3 * (temperature) / (0x7fffff - temperature);
-						t = (rt / 1000 - 1) / 3.9083E-3;
-						DISP_2LineNumWrite(1, 90, ((uint8_t) floor(t / 10.0)) + '0');
-						DISP_2LineNumWrite(1, 101, ((uint8_t) t % (uint8_t) 10.0) + '0');
-						DISP_2LineNumWrite(1, 112, '.');
-						t -= (float) (uint8_t) t;
-						DISP_2LineNumWrite(1, 116, ((uint8_t) floor(t * 10.0)) + '0');
+					if(xSemaphoreTake(xMutexTempMemory, (portTickType) 5) == pdTRUE)
+					{
+						if(psStartOfBuffer)
+						{
+							temperature = psStartOfBuffer[uBuffCntr];
+							xSemaphoreGive(xMutexTempMemory);
+
+							rt = 27.E3 * (temperature) / (0x7fffff - temperature);
+							t = (rt - 1000) / 3.85;
+							DISP_2LineNumWrite(1, 90, ((uint8_t) floor(t / 10.0)) + '0');
+							DISP_2LineNumWrite(1, 101, ((uint8_t) t % (uint8_t) 10.0) + '0');
+							DISP_2LineNumWrite(1, 112, '.');
+							t -= (float) (uint8_t) t;
+							DISP_2LineNumWrite(1, 116, ((uint8_t) floor(t * 10.0)) + '0');
+						}
 					}
 				}
+				else
+				{
+					// Display off
+					/* Stop update timer */
+					xTimerStop(xTimerUpdateDisplay, portMAX_DELAY);
+					//?kell ennyit várni?
+
+					/* Set off the display */
+					DISP_SetOff();
+
+					ucMode = 3;
+				}
+			}
+			else //Rotary turn
+			{
+				i = 0;
 			}
 			break;
 
@@ -247,9 +267,20 @@ static void prvMenuTask(void *pvParameters)
 			RTC_DateToString(time_string);
 			DISP_StringWrite(2, 0, time_string);
 			ucMode = 0;
+			i = 0;
 			if(xTimerIsTimerActive(xTimerUpdateDisplay) == pdFALSE)
 				xTimerStart(xTimerUpdateDisplay, 5);
 			UpdateMenu();
+			break;
+
+		case 3:
+			xTimerStart(xTimerUpdateDisplay, portMAX_DELAY);
+			//?kell ennyit várni?
+
+			/* Set on the display */
+			DISP_SetOn();
+
+			StepNextStage(2);
 			break;
 
 		case 10:
@@ -429,7 +460,8 @@ static void prvTempStoreTask(void *pvParameters)
 
 		EADC_SPI_NSS_OFF();
 
-		for(i=15;i;i--);
+		for(i = 15; i; i--)
+			;
 
 		EADC_SPI_NSS_ON();
 
@@ -465,6 +497,11 @@ static void prvTempStoreTask(void *pvParameters)
 			psStartOfBuffer[uBuffCntr] = temp;
 
 			xSemaphoreGive(xMutexTempMemory);
+
+			if(psStartOfBuffer[uBuffCntr] < temp_limit)
+				RELAY_Heat(RELAY_FanSpeed_OFF);
+			else
+				RELAY_OFF();
 		}
 	}
 }

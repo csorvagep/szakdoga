@@ -60,6 +60,7 @@ const xQueueElement xUpdate =
 #define MEASURE_TEMPERATURE_FREQUENCY	( 1000 / portTICK_RATE_MS )
 
 #define MENU_EXIT_COUNTER					( 6 )
+#define DISPLAY_OFF_TIME					( 30000 / ( MENU_UPDATE_FREQUENCY * portTICK_RATE_MS ) )
 
 /* The number of items the queue can hold.  This is 1 as the receive task
  will remove items as they are added, meaning the send task should always find

@@ -89,6 +89,8 @@ uint8_t DISP_2LineNumWrite(uint8_t Line, uint8_t Column, uint8_t Number);
 void DISP_2LineStringWrite(uint8_t Line, uint8_t Column, char * String);
 uint8_t DISP_GetBacklight(void);
 void DISP_SetBacklight(uint8_t Val);
+void DISP_SetOff(void);
+void DISP_SetOn(void);
 
 
 #endif /* DISPLAY_H_ */

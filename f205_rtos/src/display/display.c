@@ -438,6 +438,7 @@ uint8_t DISP_2LineNumWrite(uint8_t Line, uint8_t Column, uint8_t Number)
 	}
 }
 
+/*TODO comment*/
 void DISP_2LineStringWrite(uint8_t Line, uint8_t Column, char * String)
 {
 	static uint8_t i = 0;
@@ -458,4 +459,21 @@ inline void DISP_SetBacklight(uint8_t Val)
 		BacklightDuty = Val;
 
 	TIM_SetCompare2(TIM12, DutyList[BacklightDuty]);
+}
+
+/* TODO comment */
+void DISP_SetOff(void)
+{
+	DISP_ByteWrite(DISP_OFF_REG, DISP_DataType_Instruction, DISP_CSAll);
+	TIM_ForcedOC2Config(TIM12, TIM_ForcedAction_Active);/* TODO PWM leállítás máshogy? */
+	TIM_Cmd(TIM12, DISABLE);
+}
+
+void DISP_SetOn(void)
+{
+	DISP_ByteWrite(DISP_ON_REG, DISP_DataType_Instruction, DISP_CSAll);
+	TIM_Cmd(TIM12, ENABLE);
+
+	TIM_SelectOCxM(TIM12, TIM_Channel_2, TIM_OCMode_PWM2);
+	TIM_CCxCmd(TIM12, TIM_Channel_2, TIM_CCx_Enable);
 }
