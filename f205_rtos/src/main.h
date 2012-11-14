@@ -23,31 +23,6 @@
 /* STM32 include */
 #include "stm32f2xx.h"
 
-typedef enum
-{
-	Queue_Mode_Rotary = 0x00,
-	Queue_Mode_Update = 0x01
-} QueueMode_TypeDef;
-
-typedef struct
-{
-	signed short Data;
-	QueueMode_TypeDef Mode;
-} xQueueElement;
-
-const xQueueElement xUpdate =
-{ .Mode = Queue_Mode_Update, .Data = 0x00 };
-
-#define UpdateMenu()	xQueueSend(xQueueMenu, &xUpdate, 5)
-
-#define StepNextStage(NextStage)			\
-					do 							\
-					{ 								\
-						DISP_Clear(); 			\
-						ucMode = (NextStage);\
-						UpdateMenu();			\
-					} while(0)
-
 #define rotaryQUEUE_TASK_PRIORITY		( tskIDLE_PRIORITY + 1 )
 #define tempMEASURE_TASK_PRIORITY		( tskIDLE_PRIORITY + 3 )
 
@@ -75,7 +50,6 @@ const xQueueElement xUpdate =
 /*-----------------------------------------------------------*/
 
 /* Tasks */
-static void prvMenuTask(void *pvParameters);
 static void prvRotaryChkTask(void *pvParameters);
 static void prvTempStoreTask(void *pvParameters);
 
@@ -87,7 +61,6 @@ static void vTaskSleep(void *pvParameters);
 
 /* Timer Callback functions */
 static void vAllowRotary(xTimerHandle pxTimer);
-static void vSendUpdate(xTimerHandle pxTimer);
 static void vStartMeasure(xTimerHandle pxTimer);
 
 /* Other functions */
