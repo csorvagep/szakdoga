@@ -12,11 +12,11 @@
  * @param	None
  * @retval	None
  */
-void EADC_SPIInit(void)
+void EADC_Init(void)
 {
 	GPIO_InitTypeDef GPIO_InitStruct;
 	SPI_InitTypeDef SPI_InitStruct;
-	uint8_t i;
+	uint32_t i;
 
 	/* Enable the SPI3, SYCFG and GPIO clock source */
 	RCC_AHB1PeriphClockCmd(RCC_AHB1Periph_GPIOC | RCC_AHB1Periph_GPIOA, ENABLE);
@@ -65,11 +65,64 @@ void EADC_SPIInit(void)
 
 	GPIO_Init(GPIOC, &GPIO_InitStruct);
 
-	EADC_SPI_NSS_ON();
+	/* Wait for proper startup */
+	for(i=0;i<0x1fffff;i++);
+}
 
+int32_t EADC_GetTemperature(void)
+{
+	uint8_t ret[3];
+	uint8_t i;
+
+	/* Wait to transmit the latest byte */
+	while(SPI_I2S_GetFlagStatus(SPI3, SPI_I2S_FLAG_TXE ) == RESET)
+		;
+
+	EADC_NSS_ON();
+
+	/* Set sleep mode then wake up to do a single measure */
+	SPI_I2S_SendData(SPI3, EADC_COMMAND_WAKEUP);
+	while(RESET == SPI_I2S_GetFlagStatus(SPI3, SPI_I2S_FLAG_RXNE ))
+		;
 	SPI_I2S_SendData(SPI3, EADC_COMMAND_SLEEP);
 	while(RESET == SPI_I2S_GetFlagStatus(SPI3, SPI_I2S_FLAG_RXNE ))
 		;
 
-	EADC_SPI_NSS_OFF();
+	EADC_NSS_OFF();
+
+	/* Wait to do the wake up */
+	for(i = 15; i; i--)
+		;
+
+	/* Wait until the next conversation is ready (falling edge) */
+	while(!GPIO_ReadInputDataBit(GPIOC, GPIO_Pin_8 ))
+		;
+
+	EADC_NSS_ON();
+
+	/* Send read data command then send NOPs to read the conversation result */
+	SPI_I2S_SendData(SPI3, EADC_COMMAND_RDATA);
+	while(RESET == SPI_I2S_GetFlagStatus(SPI3, SPI_I2S_FLAG_RXNE ))
+		;
+
+	SPI_I2S_SendData(SPI3, EADC_COMMAND_NOP);
+	while(RESET == SPI_I2S_GetFlagStatus(SPI3, SPI_I2S_FLAG_RXNE ))
+		;
+	ret[0] = SPI_I2S_ReceiveData(SPI3 );
+
+	SPI_I2S_SendData(SPI3, EADC_COMMAND_NOP);
+	while(RESET == SPI_I2S_GetFlagStatus(SPI3, SPI_I2S_FLAG_RXNE ))
+		;
+	ret[1] = SPI_I2S_ReceiveData(SPI3 );
+
+	SPI_I2S_SendData(SPI3, EADC_COMMAND_NOP);
+	while(RESET == SPI_I2S_GetFlagStatus(SPI3, SPI_I2S_FLAG_RXNE ))
+		;
+	ret[2] = SPI_I2S_ReceiveData(SPI3 );
+
+	EADC_NSS_OFF();
+
+	/* Return the result */
+	return (ret[0] << 16) | (ret[1] << 8) | ret[2];
 }
+

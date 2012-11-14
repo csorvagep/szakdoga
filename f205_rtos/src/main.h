@@ -9,6 +9,7 @@
 #define MAIN_H_
 
 /* Includes */
+#include <stdlib.h>
 #include <string.h>
 #include <math.h>
 
@@ -47,35 +48,42 @@ const xQueueElement xUpdate =
 						UpdateMenu();			\
 					} while(0)
 
-/* Priorities at which the tasks are created. */
-#define menuQUEUE_TASK_PRIORITY			( tskIDLE_PRIORITY + 2 )
 #define rotaryQUEUE_TASK_PRIORITY		( tskIDLE_PRIORITY + 1 )
 #define tempMEASURE_TASK_PRIORITY		( tskIDLE_PRIORITY + 3 )
 
-/* The rate at which data is sent to the queue, specified in milliseconds, and
- converted to ticks using the portTICK_RATE_MS constant. */
+#define MAIN_SCREEN_PRIORITY				( tskIDLE_PRIORITY + 2 )
+#define MENU_SELECT_PRIORITY				( tskIDLE_PRIORITY + 2 )
+#define SET_TIMEDATE_PRIORITY				( tskIDLE_PRIORITY + 2 )
+#define SET_BRIGHTNESS_PRIORITY			( tskIDLE_PRIORITY + 2 )
+#define SLEEP_TASK_PRIORITY				( tskIDLE_PRIORITY + 2 )
+
 #define ROTARY_CHK_FREQUENCY				( 100 / portTICK_RATE_MS )
 #define ROTARY_PB_DENY						( 200 / portTICK_RATE_MS )
-#define MENU_UPDATE_FREQUENCY				( 5000 / portTICK_RATE_MS )
-#define MEASURE_TEMPERATURE_FREQUENCY	( 1000 / portTICK_RATE_MS )
+#define MENU_UPDATE_FREQUENCY				( 1000 / portTICK_RATE_MS )
+#define MEASURE_TEMPERATURE_FREQUENCY	( 500 / portTICK_RATE_MS )
 
-#define MENU_EXIT_COUNTER					( 6 )
-#define DISPLAY_OFF_TIME					( 30000 / ( MENU_UPDATE_FREQUENCY * portTICK_RATE_MS ) )
+#define MENU_EXIT_COUNTER					( 15 )
+#define DISPLAY_OFF_TIME					( 30 )
 
-/* The number of items the queue can hold.  This is 1 as the receive task
- will remove items as they are added, meaning the send task should always find
- the queue empty. */
+
+#define HYSTERESIS							0x22A // Kb. 0,5 fok
+#define TEMP_ERROR_DIFFERENCE				5000/*2223*/
+
 #define menuQUEUE_LENGTH					( 10 )
+#define SIZE_OF_BUFFER						( 128 )
 
 /*-----------------------------------------------------------*/
-
-/* Setup the NVIC, LED outputs, and button inputs. */
-static void prvSetupHardware(void);
 
 /* Tasks */
 static void prvMenuTask(void *pvParameters);
 static void prvRotaryChkTask(void *pvParameters);
 static void prvTempStoreTask(void *pvParameters);
+
+static void vTaskMainScreen(void *pvParameters);
+static void vTaskMenuSelect(void *pvParameters);
+static void vTaskSetTimeDate(void *pvParameters);
+static void vTaskSetBrightness(void *pvParameters);
+static void vTaskSleep(void *pvParameters);
 
 /* Timer Callback functions */
 static void vAllowRotary(xTimerHandle pxTimer);
@@ -83,5 +91,6 @@ static void vSendUpdate(xTimerHandle pxTimer);
 static void vStartMeasure(xTimerHandle pxTimer);
 
 /* Other functions */
-int16_t prvLimit(int16_t Value, int16_t Limit);
+static int16_t prvLimit(int16_t Value, int16_t Limit);
+static float prvLimitInterval(float Value, float Min, float Max);
 #endif /* MAIN_H_ */

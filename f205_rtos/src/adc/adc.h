@@ -52,11 +52,12 @@ typedef enum
 #define EADC_COMMAND_SYSGCAL	0x61
 #define EADC_COMMAND_SELFOCAL	0x62
 
-#define EADC_SPI_NSS_ON()		GPIO_ResetBits(GPIOA, GPIO_Pin_15)
-#define EADC_SPI_NSS_OFF()		GPIO_SetBits(GPIOA, GPIO_Pin_15)
+#define EADC_NSS_ON()		GPIO_ResetBits(GPIOA, GPIO_Pin_15)
+#define EADC_NSS_OFF()		GPIO_SetBits(GPIOA, GPIO_Pin_15)
 
 
 void EADC_Init(void);
-void EADC_SPIInit(void);
+int32_t EADC_GetTemperature(void);
+
 
 #endif /* EADC_H_ */

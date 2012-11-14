@@ -35,61 +35,115 @@
 #include "relay.h"
 #include "adc/adc.h"
 
-/* The queue used by both tasks. */
+/* Queue Handles */
 xQueueHandle xQueueMenu = NULL;
 
+/* Timer Handles */
 xTimerHandle xTimerRotaryAllow = NULL;
 xTimerHandle xTimerUpdateDisplay = NULL;
 xTimerHandle xTimerTempMeasure = NULL;
 
-xSemaphoreHandle xSemaphoreTempReady = NULL;
+/* Mutex Handles */
 xSemaphoreHandle xMutexTempMemory = NULL;
+xSemaphoreHandle xMutexSPIUse = NULL;
+xSemaphoreHandle xMutexTempLimit = NULL;
 
-/* Variables for temperature measuring */
-#define SIZE_OF_BUFFER 128
+/* Semaphore Handles */
+xSemaphoreHandle xSemaphoreTempReady = NULL;
+
+xSemaphoreHandle xSemaphoreMainScreen = NULL;
+xSemaphoreHandle xSemaphoreMenuSelect = NULL;
+xSemaphoreHandle xSemaphoreSetTimeDate = NULL;
+xSemaphoreHandle xSemaphoreSetBrightness = NULL;
+xSemaphoreHandle xSemaphoreSleepTask = NULL;
+
+xSemaphoreHandle * aMenuTaskPtrs[MENU_MAX + 1] = {
+		&xSemaphoreSetTimeDate, &xSemaphoreMainScreen, &xSemaphoreSetBrightness,
+		&xSemaphoreMainScreen, &xSemaphoreMainScreen, &xSemaphoreMainScreen };
+
+/* Global variables for temperature measuring */
 int32_t *psStartOfBuffer = NULL;
 uint8_t uBuffCntr = 0;
-int32_t temp_limit = 0x4e8f0;
+int32_t sTempLimit = 0x4e8f0;
+float fTempLimit = 20.0;
 
+/* Global variable used by Rotary */
 extern int16_t DeltaValue;
 
+/* Main Function, Program entry point */
 int main(void)
 {
-	/* Hardware functions, GPIO, RCC, etc... */
-	prvSetupHardware();
+	/* Ensure that all 4 interrupt priority bits are used as the pre-emption priority. */
+	NVIC_PriorityGroupConfig(NVIC_PriorityGroup_2 ); // TODO Megnézni jó-e így
 
-	/* Create the menu queue. */
+	/* Initialize the components */
+	Backlight_Init();
+	DISP_Init();
+	RELAY_Init();
+	ROT_Init(); //TODO visszatérés, hogy ha be kell állítani akkor azzal kezdjen
+	RTCInit();
+	EADC_Init();
+
+	/* Create Queues */
 	xQueueMenu = xQueueCreate( menuQUEUE_LENGTH, sizeof( xQueueElement ) );
 
-	vSemaphoreCreateBinary(xSemaphoreTempReady);
+	/* Create Mutexes */
 	xMutexTempMemory = xSemaphoreCreateMutex();
+	xMutexTempLimit = xSemaphoreCreateMutex();
 
-	if(xQueueMenu != NULL )
-	{
-		/* Create tasks */
-		xTaskCreate( prvMenuTask, ( signed char * ) "Rx", 255, NULL, menuQUEUE_TASK_PRIORITY, NULL);
-		xTaskCreate( prvRotaryChkTask, ( signed char * ) "Tx", configMINIMAL_STACK_SIZE, NULL,
-				rotaryQUEUE_TASK_PRIORITY, NULL);
-		xTaskCreate( prvTempStoreTask, ( signed char * ) "Temp", configMINIMAL_STACK_SIZE, NULL,
-				tempMEASURE_TASK_PRIORITY, NULL);
+	/* Create Semaphores */
+	vSemaphoreCreateBinary(xSemaphoreTempReady);
 
-		/* Create timers */
-		xTimerRotaryAllow = xTimerCreate("Rotary", ROTARY_PB_DENY, pdFALSE, (void *) 0, vAllowRotary);
-		xTimerUpdateDisplay = xTimerCreate("Updater", MENU_UPDATE_FREQUENCY, pdTRUE, (void *) 0,
-				vSendUpdate);
-		xTimerTempMeasure = xTimerCreate("TempM", MEASURE_TEMPERATURE_FREQUENCY, pdTRUE, NULL,
-				vStartMeasure);
+	vSemaphoreCreateBinary(xSemaphoreMainScreen);
+	vSemaphoreCreateBinary(xSemaphoreMenuSelect);
+	vSemaphoreCreateBinary(xSemaphoreSetTimeDate);
+	vSemaphoreCreateBinary(xSemaphoreSetBrightness);
+	vSemaphoreCreateBinary(xSemaphoreSleepTask);
 
-		xTimerStart(xTimerTempMeasure, 0);
+	/* Create Tasks */
+	xTaskCreate( vTaskMainScreen, ( signed char * ) "MainScreen", 70, NULL, MAIN_SCREEN_PRIORITY,
+			NULL);
+	xTaskCreate( vTaskMenuSelect, ( signed char * ) "MenuSelect", 70, NULL, MENU_SELECT_PRIORITY,
+			NULL);
+	xTaskCreate( vTaskSetTimeDate, ( signed char * ) "SetTimeDate", 70, NULL, SET_TIMEDATE_PRIORITY,
+			NULL);
+	xTaskCreate( vTaskSetBrightness, ( signed char * ) "SetBrightness", 70, NULL,
+			SET_BRIGHTNESS_PRIORITY, NULL);
+	xTaskCreate( vTaskSleep, ( signed char * ) "Sleep", 70, NULL, SLEEP_TASK_PRIORITY, NULL);
 
-		/* Start the tasks and timer running. */
-		vTaskStartScheduler();
-	}
+	xTaskCreate( prvRotaryChkTask, ( signed char * )"Rotary", configMINIMAL_STACK_SIZE, NULL,
+			rotaryQUEUE_TASK_PRIORITY, NULL);
+	xTaskCreate( prvTempStoreTask, ( signed char * ) "Temp", 70, NULL, tempMEASURE_TASK_PRIORITY,
+			NULL);
+
+	/* Create Timers */
+	xTimerRotaryAllow = xTimerCreate((signed char *) "Rotary", ROTARY_PB_DENY, pdFALSE, (void *) 0,
+			vAllowRotary);
+	xTimerTempMeasure = xTimerCreate((signed char *) "TempM", MEASURE_TEMPERATURE_FREQUENCY, pdTRUE,
+			NULL, vStartMeasure);
+
+	/* Start Temp Measure Timer */
+	xTimerStart(xTimerTempMeasure, 0);
+
+	/* Start with new measure */
+	xSemaphoreGive(xSemaphoreTempReady);
+	xSemaphoreTake(xSemaphoreMenuSelect, 0);
+	xSemaphoreTake(xSemaphoreMainScreen, 0);
+	xSemaphoreTake(xSemaphoreSetTimeDate, 0);
+	xSemaphoreTake(xSemaphoreSetBrightness, 0);
+	xSemaphoreTake(xSemaphoreSleepTask, 0);
+
+	/* Start the tasks and timer running. */
+	vTaskStartScheduler();
 
 	/* Never should reach here */
 	for(;;)
 		;
 }
+
+/*
+ * Timer callback functions
+ */
 
 void vAllowRotary(xTimerHandle pxTimer)
 {
@@ -105,12 +159,11 @@ void vAllowRotary(xTimerHandle pxTimer)
 	NVIC_Init(&NVIC_InitStruct);
 }
 
-void vSendUpdate(xTimerHandle pxTimer)
-{
-	xQueueSend(xQueueMenu, &xUpdate, 5);
-}
-/*-----------------------------------------------------------*/
+/*
+ * Tasks
+ */
 
+/* This task retrieves the value of the rotary switch and send it to the queue */
 static void prvRotaryChkTask(void *pvParameters)
 {
 	portTickType xNextWakeTime;
@@ -141,151 +194,290 @@ static void prvRotaryChkTask(void *pvParameters)
 		}
 	}
 }
-/*-----------------------------------------------------------*/
 
-static void prvMenuTask(void *pvParameters)
+/* This task displays the main screen, sets the temperature limit */
+static void vTaskMainScreen(void *pvParamters)
 {
 	xQueueElement xReceivedValue;
-	RTC_TimeTypeDef RTC_TimeStructure;
-	RTC_DateTypeDef RTC_DateStructure;
-	signed short sMenuPtr = 0, sLastMenuPtr = 0;
-	unsigned char ucMode = 2;
+	uint16_t uIdleCntr = 0;
+	uint8_t bUpdateNeed = 1;
+	float prvfTempLimit;
+	float fRt, fT;
+	int32_t prvsTempLimit, prvTemp;
 	char time_string[15];
-	char temp_str[15];
 	uint8_t i;
-	uint16_t time[6] = {
-			0, 0, 0, 0, 0, 0 };
-	uint8_t date_ptr = 0;
-	uint8_t uLimit = 0;
-	uint8_t uColNext = 0, uColPrev = 0;
-	uint8_t uLineNext = 0, uLinePrev = 0;
 
-	uint32_t temperature;
-	float rt;
-	float t;
-
-	UpdateMenu();
-
+	/* Main loop for this task */
 	for(;;)
 	{
-		/* Wait for item */
-		xQueueReceive( xQueueMenu, &xReceivedValue, portMAX_DELAY);
-
-		switch(ucMode)
+		/* Wait for the semaphore, block till take it */
+		if(xSemaphoreTake(xSemaphoreMainScreen, portMAX_DELAY))
 		{
-		/* Wait for PushButton, then write out the menu */
-		case 0:
-			if(xReceivedValue.Data == 0 && xReceivedValue.Mode == Queue_Mode_Rotary)
+			/* Do some update */
+			/* Increase the idle counter, perform an update */
+			if(bUpdateNeed)
 			{
-				sMenuPtr = 0;
-				StepNextStage(1);
-			}
-			else if(xReceivedValue.Mode == Queue_Mode_Update)
-			{
-				if(++i != DISPLAY_OFF_TIME)
+				/* Update the time and date */
+				RTC_TimeToString(time_string, RTC_ShowSeconds_No);
+				DISP_2LineStringWrite(1, 0, time_string);
+				RTC_DateToString(time_string);
+				DISP_StringWrite(2, 0, time_string);
+
+				/* Get average of the 5 latest temperature, then update */
+				if(xSemaphoreTake(xMutexTempMemory, (portTickType) 5) == pdTRUE)
 				{
-					RTC_TimeToString(time_string, RTC_ShowSeconds_No);
-					DISP_2LineStringWrite(1, 0, time_string);
-					RTC_DateToString(time_string);
-					DISP_StringWrite(2, 0, time_string);
-
-					if(xSemaphoreTake(xMutexTempMemory, (portTickType) 5) == pdTRUE)
+					if(psStartOfBuffer)
 					{
-						if(psStartOfBuffer)
-						{
-							temperature = psStartOfBuffer[uBuffCntr];
-							xSemaphoreGive(xMutexTempMemory);
+						prvTemp = 0;
+						for(i = 0; i < 5; i++)
+							prvTemp += psStartOfBuffer[(uBuffCntr - 5 + i) & 0x7f];
+						xSemaphoreGive(xMutexTempMemory);
 
-							rt = 27.E3 * (temperature) / (0x7fffff - temperature);
-							t = (rt - 1000) / 3.85;
-							DISP_2LineNumWrite(1, 90, ((uint8_t) floor(t / 10.0)) + '0');
-							DISP_2LineNumWrite(1, 101, ((uint8_t) t % (uint8_t) 10.0) + '0');
-							DISP_2LineNumWrite(1, 112, '.');
-							t -= (float) (uint8_t) t;
-							DISP_2LineNumWrite(1, 116, ((uint8_t) floor(t * 10.0)) + '0');
+						/* Calculate average */
+						prvTemp /= 5;
+
+						/* Write out the temperature  */
+						fRt = 27.E3 * (prvTemp) / (0x7fffff - prvTemp);
+						fT = (fRt - 1000) / 3.85;
+						DISP_2LineNumWrite(1, 79, ((uint8_t) floor(fT / 10.0)) + '0');
+						DISP_2LineNumWrite(1, 90, ((uint8_t) fT % (uint8_t) 10.0) + '0');
+						DISP_2LineNumWrite(1, 101, '.');
+						fT -= (float) (uint8_t) fT;
+						DISP_2LineNumWrite(1, 105, ((uint8_t) floor(fT * 10.0)) + '0');
+						DISP_CharWrite(0, 115, 133);
+						DISP_CharWrite(0, 121, 'C');
+
+					}
+				}
+
+				/* Get limit temperature, then update */
+				if(xSemaphoreTake(xMutexTempLimit, 10 * portTICK_RATE_MS))
+				{
+					prvfTempLimit = fTempLimit;
+					prvsTempLimit = sTempLimit;
+
+					/* Give back the mutex */
+					xSemaphoreGive(xMutexTempLimit);
+
+					/* Write out the new limit */
+					DISP_CharWrite(2, 89, ((uint8_t) floor(prvfTempLimit / 10.0)) + '0');
+					DISP_CharWrite(2, 95, ((uint8_t) prvfTempLimit % (uint8_t) 10.0) + '0');
+					DISP_CharWrite(2, 101, '.');
+					DISP_CharWrite(2, 107,
+							((uint8_t) floor((prvfTempLimit - (float) (uint8_t) prvfTempLimit) * 10.0)) + '0');
+					DISP_CharWrite(2, 115, 133);
+					DISP_CharWrite(2, 121, 'C');
+				}
+
+				bUpdateNeed = 0;
+			}
+
+			/* Wait to receive element */
+			if(pdTRUE == xQueueReceive(xQueueMenu, &xReceivedValue, MENU_UPDATE_FREQUENCY))
+			{
+				/* TODO nem kell struktúra, visszaállni sima bytera */
+				/* Push-button received */
+				if(xReceivedValue.Data == 0 && xReceivedValue.Mode == Queue_Mode_Rotary)
+				{
+					/* Clear display */
+					DISP_Clear();
+					uIdleCntr = 0;
+					bUpdateNeed = 1;
+
+					/* Change to menu select task */
+					xSemaphoreGive(xSemaphoreMenuSelect);
+				}
+				/* Rotation received */
+				else
+				{
+					/* Reset the idle counter */
+					uIdleCntr = 0;
+
+					/* Get the current temperature limit, store in the local private variable */
+					if(xSemaphoreTake(xMutexTempLimit, 10 * portTICK_RATE_MS))
+					{
+						prvfTempLimit = fTempLimit;
+						prvsTempLimit = sTempLimit;
+
+						/* Give back the mutex */
+						xSemaphoreGive(xMutexTempLimit);
+
+						/* Set the temperature limit */
+						prvfTempLimit = prvLimitInterval(prvfTempLimit + xReceivedValue.Data * 0.5, 15.0,
+								30.0);
+
+						/* Write out the new limit */
+						DISP_CharWrite(2, 89, ((uint8_t) floor(prvfTempLimit / 10.0)) + '0');
+						DISP_CharWrite(2, 95, ((uint8_t) prvfTempLimit % (uint8_t) 10.0) + '0');
+						DISP_CharWrite(2, 101, '.');
+						DISP_CharWrite(2, 107,
+								((uint8_t) floor((prvfTempLimit - (float) (uint8_t) prvfTempLimit) * 10.0)) + '0');
+
+						/* Compute the new ADC limit */
+						fRt = (prvfTempLimit * 3.85 + 1000);
+						prvsTempLimit = (int32_t) ((fRt * (float) 0x7fffff) / (fRt + 2.7e4));
+
+						/* Store the new limits */
+						if(xSemaphoreTake(xMutexTempLimit, 10 * portTICK_RATE_MS))
+						{
+							fTempLimit = prvfTempLimit;
+							sTempLimit = prvsTempLimit;
+							xSemaphoreGive(xMutexTempLimit);
 						}
 					}
+					/* Start over */
+					xSemaphoreGive(xSemaphoreMainScreen);
+				}
+			}
+			/* No rotary action, start over */
+			else
+			{
+				if(++uIdleCntr < DISPLAY_OFF_TIME)
+				{
+					bUpdateNeed = 1;
+
+					/* Continue working */
+					xSemaphoreGive(xSemaphoreMainScreen);
 				}
 				else
 				{
-					// Display off
-					/* Stop update timer */
-					xTimerStop(xTimerUpdateDisplay, portMAX_DELAY);
-					//?kell ennyit várni?
-
 					/* Set off the display */
 					DISP_SetOff();
 
-					ucMode = 3;
+					/* Update when come back */
+					uIdleCntr = 0;
+					bUpdateNeed = 1;
+
+					/* Switch to sleep task */
+					xSemaphoreGive(xSemaphoreSleepTask);
 				}
 			}
-			else //Rotary turn
-			{
-				i = 0;
-			}
-			break;
+		}
+	}
+}
 
-		case 1:
-			if(xReceivedValue.Data != 0 && xReceivedValue.Mode == Queue_Mode_Rotary)
+/* This task displays the main menu */
+static void vTaskMenuSelect(void *pvParamters)
+{
+	/* Declare local variables */
+	xQueueElement xReceivedValue;
+	int8_t sMenuPtr = 0, sLastMenuPtr = 1;
+	uint8_t i;
+	uint16_t uIdleCntr = 0;
+
+	/* Main loop for this task */
+	for(;;)
+	{
+		/* Wait for the semaphore, block till take it */
+		if(xSemaphoreTake(xSemaphoreMenuSelect, portMAX_DELAY))
+		{
+			/* Update when the pointer changed */
+			if(sMenuPtr != sLastMenuPtr)
 			{
-				sMenuPtr = (sMenuPtr + xReceivedValue.Data);
-				if(sMenuPtr > MENU_MAX)
-					sMenuPtr = MENU_MAX;
-				else if(sMenuPtr < 0)
-					sMenuPtr = 0;
-			}
-			else if(xReceivedValue.Data == 0 && xReceivedValue.Mode == Queue_Mode_Rotary)
-			{
-				StepNextStage(sMenuPtr + 10);
-				break;
-			}
-			if(sMenuPtr != sLastMenuPtr || xReceivedValue.Mode == Queue_Mode_Update)
-			{
+				/* Display left arrow if not the first element */
 				if(sMenuPtr == 0)
 					DISP_CharWrite(0, 0, ' ');
 				else
 					DISP_CharWrite(0, 0, '<');
 
+				/* Display right arrow if not the last element */
 				if(sMenuPtr == MENU_MAX)
 					DISP_CharWrite(0, 122, ' ');
 				else
 					DISP_CharWrite(0, 122, '>');
 
+				/* Clear first line */
 				for(i = 0; i < 118; i++)
 					DISP_BlockWrite(0, 5 + i, 0x00);
 
+				/* Write out the menu name */
 				DISP_StringWrite(0, (uint8_t) (64 - (strlen(first_row[sMenuPtr]) * 6 / 2)),
 						first_row[sMenuPtr]);
+
+				/* Save the menu pointer */
+				sLastMenuPtr = sMenuPtr;
 			}
 
-			sLastMenuPtr = sMenuPtr;
-			break;
-
-		case 2:
-			RTC_TimeToString(time_string, RTC_ShowSeconds_No);
-			DISP_2LineStringWrite(1, 0, time_string);
-			RTC_DateToString(time_string);
-			DISP_StringWrite(2, 0, time_string);
-			ucMode = 0;
-			i = 0;
-			if(xTimerIsTimerActive(xTimerUpdateDisplay) == pdFALSE)
-				xTimerStart(xTimerUpdateDisplay, 5);
-			UpdateMenu();
-			break;
-
-		case 3:
-			xTimerStart(xTimerUpdateDisplay, portMAX_DELAY);
-			//?kell ennyit várni?
-
-			/* Set on the display */
-			DISP_SetOn();
-
-			StepNextStage(2);
-			break;
-
-		case 10:
-			if(xReceivedValue.Mode == Queue_Mode_Update)
+			/* Wait for rotary action */
+			if(pdTRUE == xQueueReceive(xQueueMenu, &xReceivedValue, MENU_UPDATE_FREQUENCY))
 			{
+				/* Rotation received */
+				if(xReceivedValue.Data != 0 && xReceivedValue.Mode == Queue_Mode_Rotary)
+				{
+					/* Set the menu pointer to the new value */
+					sMenuPtr = prvLimit(sMenuPtr + xReceivedValue.Data, MENU_MAX);
+
+					/* Continue working */
+					xSemaphoreGive(xSemaphoreMenuSelect);
+				}
+				/* Push button received */
+				else if(xReceivedValue.Data == 0 && xReceivedValue.Mode == Queue_Mode_Rotary)
+				{
+					/* Clear display */
+					DISP_Clear();
+
+					/* Change to the selected menu */
+					xSemaphoreGive(*aMenuTaskPtrs[sMenuPtr]);
+
+					/* Reset values */
+					sLastMenuPtr = 1;
+					sMenuPtr = 0;
+				}
+				/* Reset the idle counter */
+				uIdleCntr = 0;
+			}
+			/* There was no change */
+			else
+			{
+				if(++uIdleCntr < MENU_EXIT_COUNTER)
+				{
+					/* Continue working */
+					xSemaphoreGive(xSemaphoreMenuSelect);
+				}
+				else
+				{
+					uIdleCntr = 0;
+					DISP_Clear();
+					sLastMenuPtr = 1;
+					sMenuPtr = 0;
+
+					/* Change back to main screen task */
+					xSemaphoreGive(xSemaphoreMainScreen);
+				}
+			}
+		} /* Task's semaphore check end */
+	} /* Task's main loop end */
+} /* Task end */
+
+/* This task sets the date and time */
+static void vTaskSetTimeDate(void *pvParamters)
+{
+	/* Local variables */
+	xQueueElement xReceivedValue;
+	uint16_t uIdleCntr = 0;
+	uint8_t bInitNeed = 1;
+	RTC_TimeTypeDef RTC_TimeStructure;
+	RTC_DateTypeDef RTC_DateStructure;
+	uint16_t time[6] = {
+			0, 0, 0, 0, 0, 0 };
+	char strTime[15];
+	char strTemp[15];
+	uint8_t uDatePtr;
+	const uint8_t aLimits[6] = {
+			99, 12, 31, 23, 59, 59 };
+	uint8_t uColNext = 0, uColPrev = 0;
+	uint8_t uLineNext = 0, uLinePrev = 0;
+
+	/* Main loop for this task */
+	for(;;)
+	{
+		/* Wait for the semaphore, block till take it */
+		if(xSemaphoreTake(xSemaphoreSetTimeDate, portMAX_DELAY))
+		{
+			/* Do initialization if needed */
+			if(bInitNeed)
+			{
+				/* Get the current date and time, and store in local array */
 				RTC_GetTime(RTC_Format_BIN, &RTC_TimeStructure);
 				RTC_GetDate(RTC_Format_BIN, &RTC_DateStructure);
 				time[0] = RTC_DateStructure.RTC_Year;
@@ -294,238 +486,317 @@ static void prvMenuTask(void *pvParameters)
 				time[3] = RTC_TimeStructure.RTC_Hours;
 				time[4] = RTC_TimeStructure.RTC_Minutes;
 				time[5] = RTC_TimeStructure.RTC_Seconds;
-				RTC_DateToString(time_string);
-				strncpy(temp_str, time_string, 2);
-				temp_str[2] = '\0';
-				DISP_StringWrite(4, 31, temp_str);
-				strncpy(temp_str, time_string + 2, 2);
-				temp_str[2] = '\0';
-				DISP_StringWriteInvert(4, 43, temp_str);
-				strcpy(temp_str, time_string + 4);
-				DISP_StringWrite(4, 55, temp_str);
-				RTC_TimeToString(time_string, RTC_ShowSeconds_Yes);
-				DISP_StringWrite(5, 40, time_string);
-				date_ptr = 0;
-				ucMode = 20;
-				i = 0;
-			}
-			break;
 
-		case 12:
-			if(xReceivedValue.Mode == Queue_Mode_Update)
-			{
-				DISP_StringWrite(4, 31, "Fenyero: ");
-				DISP_CharWriteInvert(4, 85, DISP_GetBacklight()/10+'0');
-				DISP_CharWriteInvert(4, 91, DISP_GetBacklight()%10+'0');
-			}
-			else if(xReceivedValue.Mode == Queue_Mode_Rotary && xReceivedValue.Data == 0)
-			{
-				StepNextStage(2);
-			}
-			else
-			{
-				DISP_SetBacklight(prvLimit(DISP_GetBacklight() + xReceivedValue.Data, DISP_MAX_DUTY));
-				DISP_CharWriteInvert(4, 85, DISP_GetBacklight()/10+'0');
-				DISP_CharWriteInvert(4, 91, DISP_GetBacklight()%10+'0');
-			}
-			break;
+				/* Write out the date and time, invert the year */
+				RTC_DateToString(strTime);
+				strncpy(strTemp, strTime, 2);
+				strTemp[2] = '\0';
+				DISP_StringWrite(4, 31, strTemp);
+				strncpy(strTemp, strTime + 2, 2);
+				strTemp[2] = '\0';
+				DISP_StringWriteInvert(4, 43, strTemp);
+				strcpy(strTemp, strTime + 4);
+				DISP_StringWrite(4, 55, strTemp);
+				RTC_TimeToString(strTime, RTC_ShowSeconds_Yes);
+				DISP_StringWrite(5, 40, strTime);
 
-		case 20:
-			if(xReceivedValue.Mode == Queue_Mode_Update)
+				/* Set variables */
+				uDatePtr = 0;
+				bInitNeed = 0;
+			}
+
+			/* Wait for rotary action */
+			if(xQueueReceive(xQueueMenu, &xReceivedValue, MENU_UPDATE_FREQUENCY))
 			{
-				i++;
-				if(i == MENU_EXIT_COUNTER)
+				/* Rotation received */
+				if(xReceivedValue.Data != 0 && xReceivedValue.Mode == Queue_Mode_Rotary)
 				{
-					StepNextStage(2);
-				}
-			}
-			else if(xReceivedValue.Data == 0 && xReceivedValue.Mode == Queue_Mode_Rotary)
-			{
-				i = 0;
+					/* Set the new value */
+					time[uDatePtr] = (uint8_t) prvLimit(time[uDatePtr] + xReceivedValue.Data,
+							aLimits[uDatePtr]);
 
-				if(date_ptr == 5)
-				{
-					RTC_DateStructure.RTC_Year = time[0];
-					RTC_DateStructure.RTC_Month = time[1];
-					RTC_DateStructure.RTC_Date = time[2];
-
-					RTC_TimeStructure.RTC_Hours = time[3];
-					RTC_TimeStructure.RTC_Minutes = time[4];
-					RTC_TimeStructure.RTC_Seconds = time[5];
-
-					RTC_SetDate(RTC_Format_BIN, &RTC_DateStructure);
-					RTC_SetTime(RTC_Format_BIN, &RTC_TimeStructure);
-
-					StepNextStage(2);
-				}
-				else
-				{
-					if(date_ptr < 2)
+					/* Fork in time and date */
+					if(uDatePtr < 3)
 					{
-						uColPrev = 43 + (date_ptr * 18);
-						uColNext = 43 + ((date_ptr + 1) * 18);
-						uLineNext = uLinePrev = 4;
-					}
-					else if(date_ptr == 2)
-					{
-						uColPrev = 79;
-						uColNext = 40;
-						uLinePrev = 4;
-						uLineNext = 5;
+						DISP_CharWriteInvert(4, 43 + (uDatePtr * 18), (time[uDatePtr] / 10) + '0');
+						DISP_CharWriteInvert(4, 49 + (uDatePtr * 18), (time[uDatePtr] % 10) + '0');
 					}
 					else
 					{
-						uColPrev = 40 + ((date_ptr - 3) * 18);
-						uColNext = 40 + ((date_ptr - 2) * 18);
-						uLineNext = uLinePrev = 5;
+						DISP_CharWriteInvert(5, 40 + ((uDatePtr-3) * 18), (time[uDatePtr] / 10) + '0');
+						DISP_CharWriteInvert(5, 46 + ((uDatePtr-3) * 18), (time[uDatePtr] % 10) + '0');
 					}
-					DISP_CharWrite(uLinePrev, uColPrev, (time[date_ptr] / 10) + '0');
-					DISP_CharWrite(uLinePrev, uColPrev + 6, (time[date_ptr] % 10) + '0');
-					date_ptr++;
-					DISP_CharWriteInvert(uLineNext, uColNext, (time[date_ptr] / 10) + '0');
-					DISP_CharWriteInvert(uLineNext, uColNext + 6, (time[date_ptr] % 10) + '0');
+
+					/* Continue working */
+					xSemaphoreGive(xSemaphoreSetTimeDate);
 				}
+				/* Push button received */
+				else
+				{
+					/* If the setting is done, save and go back */
+					if(uDatePtr == 5)
+					{
+						/* Store the settings */
+						RTC_DateStructure.RTC_Year = time[0];
+						RTC_DateStructure.RTC_Month = time[1];
+						RTC_DateStructure.RTC_Date = time[2];
+
+						RTC_TimeStructure.RTC_Hours = time[3];
+						RTC_TimeStructure.RTC_Minutes = time[4];
+						RTC_TimeStructure.RTC_Seconds = time[5];
+
+						RTC_SetDate(RTC_Format_BIN, &RTC_DateStructure);
+						RTC_SetTime(RTC_Format_BIN, &RTC_TimeStructure);
+
+						/* Reset variables */
+						uIdleCntr = 0;
+						bInitNeed = 1;
+						DISP_Clear();
+
+						/* Change back to main screen task */
+						xSemaphoreGive(xSemaphoreMainScreen);
+					}
+					/* Step to next part */
+					else
+					{
+						/* If it's a date */
+						if(uDatePtr < 2)
+						{
+							uColPrev = 43 + (uDatePtr * 18);
+							uColNext = 43 + ((uDatePtr + 1) * 18);
+							uLineNext = uLinePrev = 4;
+						}
+						/* If it's a switch between the date and time */
+						else if(uDatePtr == 2)
+						{
+							uColPrev = 79;
+							uColNext = 40;
+							uLinePrev = 4;
+							uLineNext = 5;
+						}
+						/* If it's a time */
+						else
+						{
+							uColPrev = 40 + ((uDatePtr - 3) * 18);
+							uColNext = 40 + ((uDatePtr - 2) * 18);
+							uLineNext = uLinePrev = 5;
+						}
+
+						/* Update display */
+						DISP_CharWrite(uLinePrev, uColPrev, (time[uDatePtr] / 10) + '0');
+						DISP_CharWrite(uLinePrev, uColPrev + 6, (time[uDatePtr] % 10) + '0');
+						uDatePtr++;
+						DISP_CharWriteInvert(uLineNext, uColNext, (time[uDatePtr] / 10) + '0');
+						DISP_CharWriteInvert(uLineNext, uColNext + 6, (time[uDatePtr] % 10) + '0');
+
+						/* Continue working */
+						xSemaphoreGive(xSemaphoreSetTimeDate);
+					}
+				}
+				uIdleCntr = 0;
 			}
 			else
 			{
-				i = 0;
-				switch(date_ptr)
+				if(++uIdleCntr < MENU_EXIT_COUNTER)
 				{
-				case 0:
-					uLimit = 99;
-					break;
-				case 1:
-					uLimit = 12;
-					break;
-				case 2:
-					uLimit = 31;
-					break;
-				case 3:
-					uLimit = 23;
-					break;
-				case 4:
-				case 5:
-					uLimit = 59;
-					break;
-				}
-				time[date_ptr] = (uint8_t) prvLimit(time[date_ptr] + xReceivedValue.Data, uLimit);
-
-				if(date_ptr < 3)
-				{
-					DISP_CharWriteInvert(4, 43 + (date_ptr * 18), (time[date_ptr] / 10) + '0');
-					DISP_CharWriteInvert(4, 49 + (date_ptr * 18), (time[date_ptr] % 10) + '0');
+					/* Continue working */
+					xSemaphoreGive(xSemaphoreSetTimeDate);
 				}
 				else
 				{
-					DISP_CharWriteInvert(5, 40 + ((date_ptr-3) * 18), (time[date_ptr] / 10) + '0');
-					DISP_CharWriteInvert(5, 46 + ((date_ptr-3) * 18), (time[date_ptr] % 10) + '0');
+					uIdleCntr = 0;
+					bInitNeed = 1;
+					DISP_Clear();
+
+					/* Change back to main screen task */
+					xSemaphoreGive(xSemaphoreMainScreen);
 				}
 			}
-			break;
-
-		default:
-			StepNextStage(2);
-			break;
 		}
-
 	}
 }
+
+/* This task sets the display's brightness */
+static void vTaskSetBrightness(void *pvParamters)
+{
+	/* Local variables */
+	xQueueElement xReceivedValue;
+	uint16_t uIdleCntr = 0;
+	uint8_t uBrightness = 0;
+	uint8_t i;
+
+	/* Main loop for this task */
+	for(;;)
+	{
+		/* Wait for the semaphore, block till take it */
+		if(xSemaphoreTake(xSemaphoreSetBrightness, portMAX_DELAY))
+		{
+			/* Update screen */
+			DISP_StringWrite(4, 31, "Fenyero:");
+			uBrightness = DISP_GetBacklight();
+			for(i = 0; i < 8; i++)
+			{
+				if(i <= uBrightness)
+					DISP_BlockWrite(4, 79 + i, ~(0xff >> i));
+				else
+					DISP_BlockWrite(4, 79 + i, 0);
+			}
+
+			/* Wait for rotary action */
+			if(xQueueReceive(xQueueMenu, &xReceivedValue, MENU_UPDATE_FREQUENCY))
+			{
+				/* Rotation received */
+				if(xReceivedValue.Data != 0 && xReceivedValue.Mode == Queue_Mode_Rotary)
+				{
+					DISP_SetBacklight(
+							prvLimit(DISP_GetBacklight() + xReceivedValue.Data, DISP_MAX_DUTY));
+					uBrightness = DISP_GetBacklight();
+					for(i = 0; i < 8; i++)
+					{
+						if(i <= uBrightness)
+							DISP_BlockWrite(4, 79 + i, ~(0xff >> i));
+						else
+							DISP_BlockWrite(4, 79 + i, 0);
+					}
+
+					/* Continue working */
+					xSemaphoreGive(xSemaphoreSetBrightness);
+				}
+				/* Push button recieved */
+				else
+				{
+					/* Clear display */
+					DISP_Clear();
+
+					/* Return back to main screen task */
+					xSemaphoreGive(xSemaphoreMainScreen);
+				}
+				uIdleCntr = 0;
+			}
+			else
+			{
+				if(++uIdleCntr < MENU_EXIT_COUNTER)
+				{
+					/* Continue working */
+					xSemaphoreGive(xSemaphoreSetBrightness);
+				}
+				else
+				{
+					uIdleCntr = 0;
+					DISP_Clear();
+
+					/* Change back to main screen task */
+					xSemaphoreGive(xSemaphoreMainScreen);
+				}
+			}
+		}
+	}
+}
+
+/* This task goes to sleep mode */
+static void vTaskSleep(void *pvParamters)
+{
+	xQueueElement xReceivedValue;
+
+	/* Main loop for this task */
+	for(;;)
+	{
+		/* Wait for the semaphore, block till take it */
+		if(xSemaphoreTake(xSemaphoreSleepTask, portMAX_DELAY))
+		{
+			/* Block until rotary action */
+			if(xQueueReceive(xQueueMenu, &xReceivedValue, portMAX_DELAY))
+			{
+				/* Send back action to the queue, comment out if needed */
+				//xQueueSendToFront(xQueueMenu, &xReceivedValue, 0);
+				/* Turn back the display */
+				DISP_SetOn();
+
+				/* Switch back to main screen */
+				xSemaphoreGive(xSemaphoreMainScreen);
+			}
+		}
+	}
+}
+
 /*-----------------------------------------------------------*/
 static void prvTempStoreTask(void *pvParameters)
 {
-	uint8_t ret[3];
-	uint32_t temp;
-	uint8_t i;
+	int32_t uCurrentTemp = 0;
+	uint8_t bIsHeatOn = 0, i, uTempCntr = 0;
+	int32_t uAvgTemp = 0;
 
 	/* Allocate the memory for temp measure log, pointers should be global and protected */
 	psStartOfBuffer = pvPortMalloc(SIZE_OF_BUFFER);
-	uBuffCntr = 0x7f;
+	uBuffCntr = 0x00;
 
 	for(;;)
 	{
 		/* Block until new measure is ready */
 		xSemaphoreTake(xSemaphoreTempReady, portMAX_DELAY);
 
-		while(!GPIO_ReadInputDataBit(GPIOC, GPIO_Pin_8 ))
-			;
+		/* Get the current ADC result */
+		uCurrentTemp = EADC_GetTemperature();
 
-		EADC_SPI_NSS_ON();
-
-		SPI_I2S_SendData(SPI3, EADC_COMMAND_WAKEUP);
-		while(RESET == SPI_I2S_GetFlagStatus(SPI3, SPI_I2S_FLAG_RXNE ))
-			;
-		SPI_I2S_SendData(SPI3, EADC_COMMAND_SLEEP);
-		while(RESET == SPI_I2S_GetFlagStatus(SPI3, SPI_I2S_FLAG_RXNE ))
-			;
-
-		EADC_SPI_NSS_OFF();
-
-		for(i = 15; i; i--)
-			;
-
-		EADC_SPI_NSS_ON();
-
-		while(!GPIO_ReadInputDataBit(GPIOC, GPIO_Pin_8 ))
-			i++;
-
-		SPI_I2S_SendData(SPI3, EADC_COMMAND_RDATA);
-		while(RESET == SPI_I2S_GetFlagStatus(SPI3, SPI_I2S_FLAG_RXNE ))
-			;
-
-		SPI_I2S_SendData(SPI3, EADC_COMMAND_NOP);
-		while(RESET == SPI_I2S_GetFlagStatus(SPI3, SPI_I2S_FLAG_RXNE ))
-			;
-		ret[0] = SPI_I2S_ReceiveData(SPI3 );
-
-		SPI_I2S_SendData(SPI3, EADC_COMMAND_NOP);
-		while(RESET == SPI_I2S_GetFlagStatus(SPI3, SPI_I2S_FLAG_RXNE ))
-			;
-		ret[1] = SPI_I2S_ReceiveData(SPI3 );
-
-		SPI_I2S_SendData(SPI3, EADC_COMMAND_NOP);
-		while(RESET == SPI_I2S_GetFlagStatus(SPI3, SPI_I2S_FLAG_RXNE ))
-			;
-		ret[2] = SPI_I2S_ReceiveData(SPI3 );
-
-		EADC_SPI_NSS_OFF();
-
-		temp = 0x00000000 | (ret[0] << 16) | (ret[1] << 8) | ret[2];
-
-		if(xSemaphoreTake(xMutexTempMemory, (portTickType) 2) == pdTRUE)
+		/* If the value is seems corrupted, leave it */
+		if(abs(uCurrentTemp - uAvgTemp) < TEMP_ERROR_DIFFERENCE || !uTempCntr)
 		{
-			uBuffCntr = (uBuffCntr + 1) & 0x7f;
-			psStartOfBuffer[uBuffCntr] = temp;
+			/* Get the global buffer */
+			if(xSemaphoreTake(xMutexTempMemory, (portTickType) 5) == pdTRUE)
+			{
 
-			xSemaphoreGive(xMutexTempMemory);
+				/* Store the current temperature */
+				psStartOfBuffer[uBuffCntr] = uCurrentTemp;
+				uBuffCntr = (uBuffCntr + 1) & 0x7f;
 
-			if(psStartOfBuffer[uBuffCntr] < temp_limit)
-				RELAY_Heat(RELAY_FanSpeed_OFF);
-			else
-				RELAY_OFF();
+				/* Clone the first measure five times */
+				if(!uTempCntr)
+				{
+					for(i = 0; i < 4; i++)
+					{
+						psStartOfBuffer[uBuffCntr] = uCurrentTemp;
+						uBuffCntr = (uBuffCntr + 1) & 0x7f;
+					}
+				}
+
+				/* Summarize the latest 5 data */
+				uAvgTemp = 0;
+				for(i = 0; i < 5; i++)
+					uAvgTemp += psStartOfBuffer[(uBuffCntr - 5 + i) & 0x7f];
+
+				/* Our work is done here, give back the mutex */
+				xSemaphoreGive(xMutexTempMemory);
+
+				/* Compute avarage */
+				uAvgTemp /= 5;
+
+				/* Check if heating is  */
+				if(uAvgTemp < (sTempLimit - (bIsHeatOn ? 0 : HYSTERESIS)))
+				{
+					if(bIsHeatOn == 0)
+					{
+						RELAY_Heat(RELAY_FanSpeed_OFF);
+						bIsHeatOn = 1;
+					}
+				}
+				else
+				{
+					if(bIsHeatOn == 1)
+					{
+						RELAY_OFF();
+						bIsHeatOn = 0;
+					}
+				}
+			}
+		}
+		if(!uTempCntr)
+		{
+			uTempCntr = 1;
+			xSemaphoreGive(xSemaphoreMainScreen);
 		}
 	}
 }
 /*-----------------------------------------------------------*/
-
-static void prvSetupHardware(void)
-{
-	/* Ensure that all 4 interrupt priority bits are used as the pre-emption
-	 priority. */
-	NVIC_PriorityGroupConfig(NVIC_PriorityGroup_2 );
-
-	/* Set up the display and the backlight */
-	Backlight_Init();
-	DISP_Init();
-
-	RELAY_Init();
-
-	ROT_Init();
-
-	RTCInit();
-
-	EADC_SPIInit();
-
-}
 
 static void vStartMeasure(xTimerHandle pxTimer)
 {
@@ -541,7 +812,7 @@ static void vStartMeasure(xTimerHandle pxTimer)
  * @param	Limit: This value it the limit, it could be negative too
  * @retval	The limited value
  */
-int16_t prvLimit(int16_t Value, int16_t Limit)
+static int16_t prvLimit(int16_t Value, int16_t Limit)
 {
 	if(Limit < 0)
 	{
@@ -559,6 +830,18 @@ int16_t prvLimit(int16_t Value, int16_t Limit)
 	}
 	return Value;
 }
+
+static float prvLimitInterval(float Value, float Min, float Max)
+{
+	if(Value < Min)
+		return Min;
+	if(Value > Max)
+		return Max;
+	else
+		return Value;
+}
+
+/* TODO float to string */
 
 /*-----------------------------------------------------------*/
 
@@ -604,27 +887,6 @@ void vApplicationIdleHook(void)
 		 reduced accordingly. */
 	}
 }
-
-#ifdef  USE_FULL_ASSERT
-
-/**
- * @brief  Reports the name of the source file and the source line number
- *   where the assert_param error has occurred.
- * @param  file: pointer to the source file name
- * @param  line: assert_param error line source number
- * @retval None
- */
-void assert_failed(uint8_t* file, uint32_t line)
-{
-	/* User can add his own implementation to report the file name and line number,
-	 ex: printf("Wrong parameters value: file %s on line %d\r\n", file, line) */
-
-	/* Infinite loop */
-	while (1)
-	{
-	}
-}
-#endif
 
 /*
  * Minimal __assert_func used by the assert() macro
