@@ -59,6 +59,9 @@
 							<tool id="org.eclipse.cdt.cross.arm.gnu.sourcery.windows.elf.printsize.debug.923140673" name="ARM Sourcery Windows GNU Print Size" superClass="org.eclipse.cdt.cross.arm.gnu.sourcery.windows.elf.printsize.debug"/>
 						</toolChain>
 					</folderInfo>
+					<sourceEntries>
+						<entry excluding="src/rfm70" flags="VALUE_WORKSPACE_PATH|RESOLVED" kind="sourcePath" name=""/>
+					</sourceEntries>
 				</configuration>
 			</storageModule>
 			<storageModule moduleId="org.eclipse.cdt.core.externalSettings"/>
@@ -106,6 +109,9 @@
 							<tool id="org.eclipse.cdt.cross.arm.gnu.sourcery.windows.elf.printsize.release.2114130135" name="ARM Sourcery Windows GNU Print Size" superClass="org.eclipse.cdt.cross.arm.gnu.sourcery.windows.elf.printsize.release"/>
 						</toolChain>
 					</folderInfo>
+					<sourceEntries>
+						<entry excluding="src/rfm70" flags="VALUE_WORKSPACE_PATH|RESOLVED" kind="sourcePath" name=""/>
+					</sourceEntries>
 				</configuration>
 			</storageModule>
 			<storageModule moduleId="org.eclipse.cdt.core.externalSettings"/>

@@ -23,6 +23,7 @@ static uint8_t LineCounter[] =
 static uint8_t ColumnCounter[] =
 { 0, 0 };
 
+/* TODO 16 elemû fényerõ szint */
 static const uint8_t DutyList[8] = {4,5,9,17,28,45,66,100};
 
 static uint8_t BacklightDuty = 3;
