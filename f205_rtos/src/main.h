@@ -42,7 +42,7 @@
 
 
 #define HYSTERESIS							0x22A // Kb. 0,5 fok
-#define TEMP_ERROR_DIFFERENCE				5000/*2223*/
+#define TEMP_ERROR_DIFFERENCE				11076 // Kb. 10 fok
 
 #define menuQUEUE_LENGTH					( 10 )
 #define SIZE_OF_BUFFER						( 128 )

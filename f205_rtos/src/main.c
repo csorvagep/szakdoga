@@ -191,7 +191,7 @@ static void prvRotaryChkTask(void *pvParameters)
 /* This task displays the main screen, sets the temperature limit */
 static void vTaskMainScreen(void *pvParamters)
 {
-	int8_t uReceivedValue;
+	int8_t sReceivedValue;
 	uint16_t uIdleCntr = 0;
 	uint8_t bUpdateNeed = 1;
 	float prvfTempLimit;
@@ -263,10 +263,10 @@ static void vTaskMainScreen(void *pvParamters)
 		}
 
 		/* Wait to receive element */
-		if(pdTRUE == xQueueReceive(xQueueMenu, &uReceivedValue, MENU_UPDATE_FREQUENCY))
+		if(pdTRUE == xQueueReceive(xQueueMenu, &sReceivedValue, MENU_UPDATE_FREQUENCY))
 		{
 			/* Push-button received */
-			if(uReceivedValue == 0)
+			if(sReceivedValue == 0)
 			{
 				/* Clear display */
 				DISP_Clear();
@@ -292,7 +292,7 @@ static void vTaskMainScreen(void *pvParamters)
 					xSemaphoreGive(xMutexTempLimit);
 
 					/* Set the temperature limit */
-					prvfTempLimit = prvLimitInterval(prvfTempLimit + uReceivedValue * 0.5, 15.0, 30.0);
+					prvfTempLimit = prvLimitInterval(prvfTempLimit + sReceivedValue * 0.5, 15.0, 30.0);
 
 					/* Write out the new limit */
 					DISP_CharWrite(2, 89, ((uint8_t) floor(prvfTempLimit / 10.0)) + '0');
@@ -342,7 +342,7 @@ static void vTaskMainScreen(void *pvParamters)
 static void vTaskMenuSelect(void *pvParamters)
 {
 	/* Declare local variables */
-	int8_t uReceivedValue;
+	int8_t sReceivedValue;
 	int8_t sMenuPtr = 0, sLastMenuPtr = 1;
 	uint8_t i;
 	uint16_t uIdleCntr = 0;
@@ -378,17 +378,17 @@ static void vTaskMenuSelect(void *pvParamters)
 		}
 
 		/* Wait for rotary action */
-		if(pdTRUE == xQueueReceive(xQueueMenu, &uReceivedValue, MENU_UPDATE_FREQUENCY))
+		if(pdTRUE == xQueueReceive(xQueueMenu, &sReceivedValue, MENU_UPDATE_FREQUENCY))
 		{
 			/* Rotation received */
-			if(uReceivedValue != 0)
+			if(sReceivedValue != 0)
 			{
 				/* Set the menu pointer to the new value */
-				sMenuPtr = prvLimit(sMenuPtr + uReceivedValue, MENU_MAX);
+				sMenuPtr = prvLimit(sMenuPtr + sReceivedValue, MENU_MAX);
 
 			}
 			/* Push button received */
-			else if(uReceivedValue == 0)
+			else if(sReceivedValue == 0)
 			{
 				/* Clear display */
 				DISP_Clear();
@@ -427,7 +427,7 @@ static void vTaskMenuSelect(void *pvParamters)
 static void vTaskSetTimeDate(void *pvParamters)
 {
 	/* Local variables */
-	int8_t uReceivedValue;
+	int8_t sReceivedValue;
 	uint16_t uIdleCntr = 0;
 	uint8_t bInitNeed = 1;
 	RTC_TimeTypeDef RTC_TimeStructure;
@@ -477,13 +477,13 @@ static void vTaskSetTimeDate(void *pvParamters)
 		}
 
 		/* Wait for rotary action */
-		if(xQueueReceive(xQueueMenu, &uReceivedValue, MENU_UPDATE_FREQUENCY))
+		if(xQueueReceive(xQueueMenu, &sReceivedValue, MENU_UPDATE_FREQUENCY))
 		{
 			/* Rotation received */
-			if(uReceivedValue != 0)
+			if(sReceivedValue != 0)
 			{
 				/* Set the new value */
-				time[uDatePtr] = (uint8_t) prvLimit(time[uDatePtr] + uReceivedValue, aLimits[uDatePtr]);
+				time[uDatePtr] = (uint8_t) prvLimit(time[uDatePtr] + sReceivedValue, aLimits[uDatePtr]);
 
 				/* Fork in time and date */
 				if(uDatePtr < 3)
@@ -582,7 +582,7 @@ static void vTaskSetTimeDate(void *pvParamters)
 static void vTaskSetBrightness(void *pvParamters)
 {
 	/* Local variables */
-	int8_t uReceivedValue;
+	int8_t sReceivedValue;
 	uint16_t uIdleCntr = 0;
 	uint8_t uBrightness = 0;
 	uint8_t i;
@@ -602,12 +602,12 @@ static void vTaskSetBrightness(void *pvParamters)
 		}
 
 		/* Wait for rotary action */
-		if(xQueueReceive(xQueueMenu, &uReceivedValue, MENU_UPDATE_FREQUENCY))
+		if(xQueueReceive(xQueueMenu, &sReceivedValue, MENU_UPDATE_FREQUENCY))
 		{
 			/* Rotation received */
-			if(uReceivedValue != 0)
+			if(sReceivedValue != 0)
 			{
-				DISP_SetBacklight(prvLimit(DISP_GetBacklight() + uReceivedValue, DISP_MAX_DUTY));
+				DISP_SetBacklight(prvLimit(DISP_GetBacklight() + sReceivedValue, DISP_MAX_DUTY));
 				uBrightness = DISP_GetBacklight();
 				for(i = 0; i < 8; i++)
 				{
@@ -648,13 +648,13 @@ static void vTaskSetBrightness(void *pvParamters)
 /* This task goes to sleep mode */
 static void vTaskSleep(void *pvParamters)
 {
-	int8_t uReceivedValue;
+	int8_t sReceivedValue;
 
 	/* Main loop for this task */
 	for(;;)
 	{
 		/* Block until rotary action */
-		if(xQueueReceive(xQueueMenu, &uReceivedValue, portMAX_DELAY))
+		if(xQueueReceive(xQueueMenu, &sReceivedValue, portMAX_DELAY))
 		{
 			/* Send back action to the queue, comment out if needed */
 			//xQueueSendToFront(xQueueMenu, &xReceivedValue, 0);
