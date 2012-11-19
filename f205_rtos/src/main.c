@@ -34,6 +34,7 @@
 #include "rtc.h"
 #include "relay.h"
 #include "adc/adc.h"
+#include "rfm70/rfm70.h"
 
 /* Queue Handles */
 xQueueHandle xQueueMenu = NULL;
@@ -90,6 +91,7 @@ int main(void)
 	/* Create Mutexes */
 	xMutexTempMemory = xSemaphoreCreateMutex();
 	xMutexTempLimit = xSemaphoreCreateMutex();
+	xMutexSPIUse = xSemaphoreCreateMutex();
 
 	/* Create Semaphores */
 	vSemaphoreCreateBinary(xSemaphoreTempReady);
@@ -106,10 +108,12 @@ int main(void)
 	xTaskCreate( vTaskSleep, ( signed char * ) "Sleep", 70, NULL, SLEEP_TASK_PRIORITY,
 			&xTaskHandleSleep);
 
-	xTaskCreate( prvRotaryChkTask, ( signed char * )"Rotary", configMINIMAL_STACK_SIZE, NULL,
+	xTaskCreate( prvRotaryChkTask, ( signed char * )"Rotary", 70, NULL,
 			rotaryQUEUE_TASK_PRIORITY, NULL);
 	xTaskCreate( prvTempStoreTask, ( signed char * ) "Temp", 70, NULL, tempMEASURE_TASK_PRIORITY,
 			NULL);
+
+	xTaskCreate(vTaskRFMRead, (signed char *)"rfm", 70, NULL, RFM_TASK_PRIORITY, NULL);
 
 	/* Create Timers */
 	xTimerRotaryAllow = xTimerCreate((signed char *) "Rotary", ROTARY_PB_DENY, pdFALSE, (void *) 0,
@@ -686,7 +690,17 @@ static void prvTempStoreTask(void *pvParameters)
 		xSemaphoreTake(xSemaphoreTempReady, portMAX_DELAY);
 
 		/* Get the current ADC result */
-		uCurrentTemp = EADC_GetTemperature();
+		if(xSemaphoreTake(xMutexSPIUse, (portTickType) 20))
+		{
+			EADC_SetSPI();
+			uCurrentTemp = EADC_GetTemperature();
+			xSemaphoreGive(xMutexSPIUse);
+		}
+		else
+		{
+			uCurrentTemp = 0;
+		}
+
 
 		/* If the value is seems corrupted, leave it */
 		if(abs(uCurrentTemp - uAvgTemp) < TEMP_ERROR_DIFFERENCE || !uTempCntr)
@@ -744,6 +758,34 @@ static void prvTempStoreTask(void *pvParameters)
 			uTempCntr = 1;
 			vTaskResume(xTaskHandleMainScreen);
 		}
+	}
+}
+
+static void vTaskRFMRead(void *pvParameters)
+{
+	portTickType xNextWakeTime;
+
+	/* Initialize xNextWakeTime - this only needs to be done once. */
+	xNextWakeTime = xTaskGetTickCount();
+
+	xSemaphoreTake(xMutexSPIUse, portMAX_DELAY);
+	rfm70_init();
+	xSemaphoreGive(xMutexSPIUse);
+
+	for(;;)
+	{
+		vTaskDelayUntil(&xNextWakeTime, RFM_READ_FREQ);
+
+		if(xSemaphoreTake(xMutexSPIUse, (portTickType) 20))
+		{
+			RFM_SetSPI();
+			if(0x07 != rfm70_receive_next_pipe())
+				DISP_CharWrite(6, 64, '1');
+			else
+				DISP_CharWrite(6, 64, '0');
+			xSemaphoreGive(xMutexSPIUse);
+		}
+
 	}
 }
 /*-----------------------------------------------------------*/

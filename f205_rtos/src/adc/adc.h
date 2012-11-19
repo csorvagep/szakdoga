@@ -58,6 +58,7 @@ typedef enum
 
 void EADC_Init(void);
 int32_t EADC_GetTemperature(void);
+void EADC_SetSPI(void);
 
 
 #endif /* EADC_H_ */
