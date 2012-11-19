@@ -23,8 +23,9 @@
 /* STM32 include */
 #include "stm32f2xx.h"
 
-#define rotaryQUEUE_TASK_PRIORITY		( tskIDLE_PRIORITY + 1 )
-#define tempMEASURE_TASK_PRIORITY		( tskIDLE_PRIORITY + 3 )
+#define rotaryQUEUE_TASK_PRIORITY		( tskIDLE_PRIORITY + 3 )
+#define tempMEASURE_TASK_PRIORITY		( tskIDLE_PRIORITY + 4 )
+#define RFM_TASK_PRIORITY					( tskIDLE_PRIORITY + 1 )
 
 #define MAIN_SCREEN_PRIORITY				( tskIDLE_PRIORITY + 2 )
 #define MENU_SELECT_PRIORITY				( tskIDLE_PRIORITY + 2 )
@@ -36,6 +37,8 @@
 #define ROTARY_PB_DENY						( 200 / portTICK_RATE_MS )
 #define MENU_UPDATE_FREQUENCY				( 1000 / portTICK_RATE_MS )
 #define MEASURE_TEMPERATURE_FREQUENCY	( 500 / portTICK_RATE_MS )
+
+#define RFM_READ_FREQ						( 300 / portTICK_RATE_MS )
 
 #define MENU_EXIT_COUNTER					( 15 )
 #define DISPLAY_OFF_TIME					( 30 )
@@ -58,6 +61,8 @@ static void vTaskMenuSelect(void *pvParameters);
 static void vTaskSetTimeDate(void *pvParameters);
 static void vTaskSetBrightness(void *pvParameters);
 static void vTaskSleep(void *pvParameters);
+
+static void vTaskRFMRead(void *pvParameters);
 
 /* Timer Callback functions */
 static void vAllowRotary(xTimerHandle pxTimer);

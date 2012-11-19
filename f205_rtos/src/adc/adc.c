@@ -49,7 +49,7 @@ void EADC_Init(void)
 	//GPIO_PinAFConfig(GPIOA, GPIO_PinSource15, GPIO_AF_SPI3);
 
 	SPI_StructInit(&SPI_InitStruct);
-	SPI_InitStruct.SPI_BaudRatePrescaler = SPI_BaudRatePrescaler_128;
+	SPI_InitStruct.SPI_BaudRatePrescaler = SPI_BaudRatePrescaler_64;
 	SPI_InitStruct.SPI_CPOL = SPI_CPOL_Low;
 	SPI_InitStruct.SPI_CPHA = SPI_CPHA_2Edge;
 	SPI_InitStruct.SPI_Mode = SPI_Mode_Master;
@@ -124,5 +124,25 @@ int32_t EADC_GetTemperature(void)
 
 	/* Return the result */
 	return (ret[0] << 16) | (ret[1] << 8) | ret[2];
+}
+
+void EADC_SetSPI(void)
+{
+	SPI_InitTypeDef SPI_InitStruct;
+	uint16_t i=0;
+
+	//SPI_Cmd(SPI3, DISABLE);
+
+	SPI_StructInit(&SPI_InitStruct);
+	SPI_InitStruct.SPI_BaudRatePrescaler = SPI_BaudRatePrescaler_128;
+	SPI_InitStruct.SPI_CPOL = SPI_CPOL_Low;
+	SPI_InitStruct.SPI_CPHA = SPI_CPHA_2Edge;
+	SPI_InitStruct.SPI_Mode = SPI_Mode_Master;
+	SPI_InitStruct.SPI_NSS = SPI_NSS_Soft;
+
+	SPI_Init(SPI3, &SPI_InitStruct);
+
+	for(i=0;i<0x7fff;i++);
+	//SPI_Cmd(SPI3, ENABLE);
 }
 
