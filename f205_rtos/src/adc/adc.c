@@ -49,7 +49,7 @@ void EADC_Init(void)
 	//GPIO_PinAFConfig(GPIOA, GPIO_PinSource15, GPIO_AF_SPI3);
 
 	SPI_StructInit(&SPI_InitStruct);
-	SPI_InitStruct.SPI_BaudRatePrescaler = SPI_BaudRatePrescaler_128;
+	SPI_InitStruct.SPI_BaudRatePrescaler = SPI_BaudRatePrescaler_256;
 	SPI_InitStruct.SPI_CPOL = SPI_CPOL_Low;
 	SPI_InitStruct.SPI_CPHA = SPI_CPHA_2Edge;
 	SPI_InitStruct.SPI_Mode = SPI_Mode_Master;
@@ -66,7 +66,7 @@ void EADC_Init(void)
 	GPIO_Init(GPIOC, &GPIO_InitStruct);
 
 	/* Wait for proper startup */
-	for(i=0;i<0x1fffff;i++);
+	for(i=0;i<0xfffff;i++);
 }
 
 int32_t EADC_GetTemperature(void)

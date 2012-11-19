@@ -58,7 +58,7 @@ void Backlight_Init()
 	GPIO_PinAFConfig(GPIOB, GPIO_PinSource15, GPIO_AF_TIM12 );
 
 //Set TIM12 to PWM
-	PrescalerValue = (uint16_t) ((SystemCoreClock / 2) / 28000000) - 1;
+	PrescalerValue = (uint16_t) (SystemCoreClock / 12000000) - 1;
 	TIM_InitStruct.TIM_Period = 100;
 	TIM_InitStruct.TIM_Prescaler = PrescalerValue;
 	TIM_InitStruct.TIM_ClockDivision = 0;
