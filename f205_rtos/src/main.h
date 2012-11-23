@@ -36,16 +36,16 @@
 #define ROTARY_CHK_FREQUENCY				( 100 / portTICK_RATE_MS )
 #define ROTARY_PB_DENY						( 200 / portTICK_RATE_MS )
 #define MENU_UPDATE_FREQUENCY				( 1000 / portTICK_RATE_MS )
-#define MEASURE_TEMPERATURE_FREQUENCY	( 500 / portTICK_RATE_MS )
+#define MEASURE_TEMP_FREQ					( 750 / portTICK_RATE_MS )
 
-#define RFM_READ_FREQ						( 300 / portTICK_RATE_MS )
+#define RFM_READ_FREQ						( 1000 / portTICK_RATE_MS )
 
 #define MENU_EXIT_COUNTER					( 15 )
 #define DISPLAY_OFF_TIME					( 30 )
 
 
 #define HYSTERESIS							0x22A // Kb. 0,5 fok
-#define TEMP_ERROR_DIFFERENCE				11076 // Kb. 10 fok
+#define TEMP_ERROR_DIFFERENCE				5538 // Kb. 5 fok
 
 #define menuQUEUE_LENGTH					( 10 )
 #define SIZE_OF_BUFFER						( 128 )
@@ -66,7 +66,6 @@ static void vTaskRFMRead(void *pvParameters);
 
 /* Timer Callback functions */
 static void vAllowRotary(xTimerHandle pxTimer);
-static void vStartMeasure(xTimerHandle pxTimer);
 
 /* Other functions */
 static int16_t prvLimit(int16_t Value, int16_t Limit);

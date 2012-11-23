@@ -726,5 +726,6 @@ unsigned char rfm70_receive(unsigned char * pipe, unsigned char *buf,
 
 void RFM_PinInit(void);
 void RFM_SetSPI(void);
+void EXTI15_10_IRQHandler(void);
 
 #endif

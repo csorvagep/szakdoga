@@ -30,6 +30,8 @@ static uint8_t BacklightDuty = 3;
 
 static void DISP_ByteWrite(uint8_t Byte, DISPDataType_TypeDef DISP_DataType, DISPCs_TypeDef DISP_CS);
 
+static uint8_t Duty = 17;
+
 /**
  * @brief	This function initializes the display backlight's GPIO pins and the timer for PWM
  * @param	None
@@ -40,11 +42,13 @@ void Backlight_Init()
 	GPIO_InitTypeDef GPIO_InitStruct;
 	TIM_TimeBaseInitTypeDef TIM_InitStruct;
 	TIM_OCInitTypeDef TIM_OCInitStruct;
+	NVIC_InitTypeDef NVIC_InitStruct;
 	uint16_t PrescalerValue = 0;
 
 //Enable clocks
 	RCC_AHB1PeriphClockCmd(RCC_AHB1Periph_GPIOB, ENABLE);
 	RCC_APB1PeriphClockCmd(RCC_APB1Periph_TIM12, ENABLE);
+	RCC_APB1PeriphClockCmd(RCC_APB1Periph_TIM3, ENABLE);
 
 //Set display backlight PWM
 	GPIO_InitStruct.GPIO_Mode = GPIO_Mode_AF;
@@ -58,7 +62,7 @@ void Backlight_Init()
 	GPIO_PinAFConfig(GPIOB, GPIO_PinSource15, GPIO_AF_TIM12 );
 
 //Set TIM12 to PWM
-	PrescalerValue = (uint16_t) (SystemCoreClock / 12000000) - 1;
+	PrescalerValue = (uint16_t) 0/* (SystemCoreClock / 12000000) - 1*/;
 	TIM_InitStruct.TIM_Period = 100;
 	TIM_InitStruct.TIM_Prescaler = PrescalerValue;
 	TIM_InitStruct.TIM_ClockDivision = 0;
@@ -77,6 +81,19 @@ void Backlight_Init()
 	TIM_ARRPreloadConfig(TIM12, ENABLE);
 
 	TIM_Cmd(TIM12, ENABLE);
+
+	TIM_TimeBaseStructInit(&TIM_InitStruct);
+	TIM_InitStruct.TIM_Period = SystemCoreClock / 60000 - 1;
+	TIM_InitStruct.TIM_Prescaler = 1000;
+	TIM_TimeBaseInit(TIM3, &TIM_InitStruct);
+
+	TIM_ITConfig(TIM3, TIM_IT_Update, ENABLE);
+
+	NVIC_InitStruct.NVIC_IRQChannel = TIM3_IRQn;
+	NVIC_InitStruct.NVIC_IRQChannelCmd = ENABLE;
+	NVIC_InitStruct.NVIC_IRQChannelPreemptionPriority = 1;
+	NVIC_InitStruct.NVIC_IRQChannelSubPriority = 2;
+	NVIC_Init(&NVIC_InitStruct);
 }
 
 /**
@@ -465,9 +482,10 @@ inline void DISP_SetBacklight(uint8_t Val)
 /* TODO comment */
 void DISP_SetOff(void)
 {
-	DISP_ByteWrite(DISP_OFF_REG, DISP_DataType_Instruction, DISP_CSAll);
-	TIM_ForcedOC2Config(TIM12, TIM_ForcedAction_Active);/* TODO PWM leállítás máshogy? */
-	TIM_Cmd(TIM12, DISABLE);
+	Duty = DutyList[BacklightDuty];
+
+	/* Enable the fade off timer */
+	TIM_Cmd(TIM3, ENABLE);
 }
 
 void DISP_SetOn(void)
@@ -477,4 +495,25 @@ void DISP_SetOn(void)
 
 	TIM_SelectOCxM(TIM12, TIM_Channel_2, TIM_OCMode_PWM2);
 	TIM_CCxCmd(TIM12, TIM_Channel_2, TIM_CCx_Enable);
+
+	TIM_SetCompare2(TIM12, DutyList[BacklightDuty]);
+}
+
+void TIM3_IRQHandler(void)
+{
+	if(TIM_GetITStatus(TIM3, TIM_IT_Update ))
+	{
+		if(Duty == 0)
+		{
+			DISP_ByteWrite(DISP_OFF_REG, DISP_DataType_Instruction, DISP_CSAll);
+			TIM_ForcedOC2Config(TIM12, TIM_ForcedAction_Active);
+			TIM_Cmd(TIM12, DISABLE);
+			TIM_Cmd(TIM3, DISABLE);
+		}
+		else
+		{
+			TIM_SetCompare2(TIM12, --Duty);
+		}
+		TIM_ClearITPendingBit(TIM3, TIM_IT_Update );
+	}
 }

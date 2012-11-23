@@ -49,8 +49,11 @@ xSemaphoreHandle xMutexTempMemory = NULL;
 xSemaphoreHandle xMutexSPIUse = NULL;
 xSemaphoreHandle xMutexTempLimit = NULL;
 
+xSemaphoreHandle xMutexBattVolt = NULL;
+
 /* Semaphore Handles */
 xSemaphoreHandle xSemaphoreTempReady = NULL;
+xSemaphoreHandle xSemaphoreRFInt = NULL;
 
 xTaskHandle xTaskHandleMainScreen = NULL;
 xTaskHandle xTaskHandleMenuSelect = NULL;
@@ -67,6 +70,11 @@ int32_t *psStartOfBuffer = NULL;
 uint8_t uBuffCntr = 0;
 int32_t sTempLimit = 0x4e8f0;
 float fTempLimit = 20.0;
+
+uint16_t uSensBattVoltage = 3700;
+uint16_t uSensExtTemp = 20000;
+uint8_t uSensCntr = 0;
+uint8_t uSensSignal = 0;
 
 /* Global variable used by Rotary */
 extern int16_t DeltaValue;
@@ -92,12 +100,14 @@ int main(void)
 	xMutexTempMemory = xSemaphoreCreateMutex();
 	xMutexTempLimit = xSemaphoreCreateMutex();
 	xMutexSPIUse = xSemaphoreCreateMutex();
+	xMutexBattVolt = xSemaphoreCreateMutex();
 
 	/* Create Semaphores */
 	vSemaphoreCreateBinary(xSemaphoreTempReady);
+	vSemaphoreCreateBinary(xSemaphoreRFInt);
 
 	/* Create Tasks */
-	xTaskCreate( vTaskMainScreen, ( signed char * ) "MainScreen", 70, NULL, MAIN_SCREEN_PRIORITY,
+	xTaskCreate( vTaskMainScreen, ( signed char * ) "MainScreen", 100, NULL, MAIN_SCREEN_PRIORITY,
 			&xTaskHandleMainScreen);
 	xTaskCreate( vTaskMenuSelect, ( signed char * ) "MenuSelect", 70, NULL, MENU_SELECT_PRIORITY,
 			&xTaskHandleMenuSelect);
@@ -108,8 +118,8 @@ int main(void)
 	xTaskCreate( vTaskSleep, ( signed char * ) "Sleep", 70, NULL, SLEEP_TASK_PRIORITY,
 			&xTaskHandleSleep);
 
-	xTaskCreate( prvRotaryChkTask, ( signed char * )"Rotary", 70, NULL,
-			rotaryQUEUE_TASK_PRIORITY, NULL);
+	xTaskCreate( prvRotaryChkTask, ( signed char * )"Rotary", 70, NULL, rotaryQUEUE_TASK_PRIORITY,
+			NULL);
 	xTaskCreate( prvTempStoreTask, ( signed char * ) "Temp", 70, NULL, tempMEASURE_TASK_PRIORITY,
 			NULL);
 
@@ -118,14 +128,6 @@ int main(void)
 	/* Create Timers */
 	xTimerRotaryAllow = xTimerCreate((signed char *) "Rotary", ROTARY_PB_DENY, pdFALSE, (void *) 0,
 			vAllowRotary);
-	xTimerTempMeasure = xTimerCreate((signed char *) "TempM", MEASURE_TEMPERATURE_FREQUENCY, pdTRUE,
-			NULL, vStartMeasure);
-
-	/* Start Temp Measure Timer */
-	xTimerStart(xTimerTempMeasure, 0);
-
-	/* Start with new measure */
-	xSemaphoreGive(xSemaphoreTempReady);
 
 	vTaskSuspend(xTaskHandleMainScreen);
 	vTaskSuspend(xTaskHandleMenuSelect);
@@ -203,6 +205,10 @@ static void vTaskMainScreen(void *pvParamters)
 	int32_t prvsTempLimit, prvTemp;
 	char time_string[15];
 	uint8_t i;
+	uint16_t prvBattVoltage;
+	uint16_t prvExtTemp;
+	uint8_t prvSensCntr;
+	uint8_t prvSignal;
 
 	/* Main loop for this task */
 	for(;;)
@@ -242,6 +248,10 @@ static void vTaskMainScreen(void *pvParamters)
 					DISP_CharWrite(0, 121, 'C');
 
 				}
+				else
+				{
+					xSemaphoreGive(xMutexTempMemory);
+				}
 			}
 
 			/* Get limit temperature, then update */
@@ -263,6 +273,32 @@ static void vTaskMainScreen(void *pvParamters)
 				DISP_CharWrite(2, 121, 'C');
 			}
 
+			/* Voltage of the wireless sensor */
+			if(xSemaphoreTake(xMutexBattVolt, 10 * portTICK_RATE_MS))
+			{
+				prvBattVoltage = uSensBattVoltage;
+				prvExtTemp = uSensExtTemp;
+				prvSensCntr = uSensCntr;
+				prvSignal = uSensSignal;
+				xSemaphoreGive(xMutexBattVolt);
+
+				DISP_CharWrite(5, 64, (prvBattVoltage / 1000) + '0');
+				DISP_CharWrite(5, 70, '.');
+				DISP_CharWrite(5, 76, (prvBattVoltage % 1000) / 100 + '0');
+				DISP_CharWrite(5, 82, (prvBattVoltage % 100) / 10 + '0');
+
+				DISP_CharWrite(6, 58, (prvExtTemp / 10000) + '0');
+				DISP_CharWrite(6, 64, (prvExtTemp % 10000) / 1000 + '0');
+				DISP_CharWrite(6, 70, '.');
+				DISP_CharWrite(6, 76, (prvExtTemp % 1000) / 100 + '0');
+
+				DISP_CharWrite(5, 0, (prvSensCntr / 100) + '0');
+				DISP_CharWrite(5, 6, (prvSensCntr % 100) / 10 + '0');
+				DISP_CharWrite(5, 12, (prvSensCntr % 10) + '0');
+
+				DISP_CharWrite(6, 0, (prvSignal / 10) + '0');
+				DISP_CharWrite(6, 6, (prvSignal % 10) + '0');
+			}
 			bUpdateNeed = 0;
 		}
 
@@ -621,7 +657,7 @@ static void vTaskSetBrightness(void *pvParamters)
 						DISP_BlockWrite(4, 79 + i, 0);
 				}
 			}
-			/* Push button recieved */
+			/* Push button received */
 			else
 			{
 				/* Clear display */
@@ -676,18 +712,44 @@ static void vTaskSleep(void *pvParamters)
 /*-----------------------------------------------------------*/
 static void prvTempStoreTask(void *pvParameters)
 {
+	portTickType xNextWakeTime;
 	int32_t uCurrentTemp = 0;
-	uint8_t bIsHeatOn = 0, i, uTempCntr = 0;
+	uint8_t bIsHeatOn = 0, i;
 	int32_t uAvgTemp = 0;
+
+	/* Take the memory protector mutex */
+	xSemaphoreTake(xMutexTempMemory, portMAX_DELAY);
 
 	/* Allocate the memory for temp measure log, pointers should be global and protected */
 	psStartOfBuffer = pvPortMalloc(SIZE_OF_BUFFER);
 	uBuffCntr = 0x00;
 
+	/* First measure */
+	if(xSemaphoreTake(xMutexSPIUse, (portTickType) 50))
+	{
+		EADC_SetSPI();
+		uCurrentTemp = EADC_GetTemperature();
+		xSemaphoreGive(xMutexSPIUse);
+	}
+	for(i = 0; i < 5; i++)
+	{
+		psStartOfBuffer[uBuffCntr] = uCurrentTemp;
+		uBuffCntr = (uBuffCntr + 1) & 0x7f;
+	}
+	uAvgTemp = uCurrentTemp;
+
+	/* Give back the mutex */
+	xSemaphoreGive(xMutexTempMemory);
+
+	/* Start the display */
+	vTaskResume(xTaskHandleMainScreen);
+
+	/* Initialize xNextWakeTime - this only needs to be done once. */
+	xNextWakeTime = xTaskGetTickCount();
+
 	for(;;)
 	{
-		/* Block until new measure is ready */
-		xSemaphoreTake(xSemaphoreTempReady, portMAX_DELAY);
+		vTaskDelayUntil(&xNextWakeTime, MEASURE_TEMP_FREQ);
 
 		/* Get the current ADC result */
 		if(xSemaphoreTake(xMutexSPIUse, (portTickType) 20))
@@ -698,12 +760,12 @@ static void prvTempStoreTask(void *pvParameters)
 		}
 		else
 		{
+			/* Skip this measure */
 			uCurrentTemp = 0;
 		}
 
-
 		/* If the value is seems corrupted, leave it */
-		if(abs(uCurrentTemp - uAvgTemp) < TEMP_ERROR_DIFFERENCE || !uTempCntr)
+		if(abs(uCurrentTemp - uAvgTemp) < TEMP_ERROR_DIFFERENCE)
 		{
 			/* Get the global buffer */
 			if(xSemaphoreTake(xMutexTempMemory, (portTickType) 5) == pdTRUE)
@@ -713,16 +775,6 @@ static void prvTempStoreTask(void *pvParameters)
 				psStartOfBuffer[uBuffCntr] = uCurrentTemp;
 				uBuffCntr = (uBuffCntr + 1) & 0x7f;
 
-				/* Clone the first measure five times */
-				if(!uTempCntr)
-				{
-					for(i = 0; i < 4; i++)
-					{
-						psStartOfBuffer[uBuffCntr] = uCurrentTemp;
-						uBuffCntr = (uBuffCntr + 1) & 0x7f;
-					}
-				}
-
 				/* Summarize the latest 5 data */
 				uAvgTemp = 0;
 				for(i = 0; i < 5; i++)
@@ -731,7 +783,7 @@ static void prvTempStoreTask(void *pvParameters)
 				/* Our work is done here, give back the mutex */
 				xSemaphoreGive(xMutexTempMemory);
 
-				/* Compute avarage */
+				/* Compute average */
 				uAvgTemp /= 5;
 
 				/* Check if heating is  */
@@ -753,50 +805,75 @@ static void prvTempStoreTask(void *pvParameters)
 				}
 			}
 		}
-		if(!uTempCntr)
-		{
-			uTempCntr = 1;
-			vTaskResume(xTaskHandleMainScreen);
-		}
 	}
 }
 
 static void vTaskRFMRead(void *pvParameters)
 {
 	portTickType xNextWakeTime;
+	uint8_t aReceiveBuff[32];
+	uint8_t uPipe;
+	uint8_t uLength;
+
+	uint16_t bat;
+	uint16_t temp;
+	uint8_t cntr;
+	uint8_t signal;
+
+	/* Allocate space */
 
 	/* Initialize xNextWakeTime - this only needs to be done once. */
-	xNextWakeTime = xTaskGetTickCount();
-
+	//xNextWakeTime = xTaskGetTickCount();
+	/* Init RF module */
 	xSemaphoreTake(xMutexSPIUse, portMAX_DELAY);
 	rfm70_init();
 	xSemaphoreGive(xMutexSPIUse);
 
 	for(;;)
 	{
-		vTaskDelayUntil(&xNextWakeTime, RFM_READ_FREQ);
+		//vTaskDelayUntil(&xNextWakeTime, RFM_READ_FREQ);
+		xSemaphoreTake(xSemaphoreRFInt, portMAX_DELAY);
 
+		uPipe = 6;
+		uLength = 0;
 		if(xSemaphoreTake(xMutexSPIUse, (portTickType) 20))
 		{
 			RFM_SetSPI();
-			if(0x07 != rfm70_receive_next_pipe())
-				DISP_CharWrite(6, 64, '1');
-			else
-				DISP_CharWrite(6, 64, '0');
-			xSemaphoreGive(xMutexSPIUse);
-		}
 
+			if(rfm70_register_read(RFM70_REG_STATUS) & 0x40)
+			{
+				if(rfm70_receive(&uPipe, aReceiveBuff, &uLength))
+				{
+					rfm70_register_write(RFM70_CMD_FLUSH_RX, 0);
+					if(uLength == 6)
+					{
+						bat = aReceiveBuff[0] | (aReceiveBuff[1] << 8);
+						temp = aReceiveBuff[2] | (aReceiveBuff[3] << 8);
+						cntr = aReceiveBuff[4];
+						signal = aReceiveBuff[5];
+					}
+
+				}
+				rfm70_register_write(RFM70_REG_STATUS, 0x70);
+			}
+			xSemaphoreGive(xMutexSPIUse);
+			if(bat)
+			{
+				if(xSemaphoreTake(xMutexBattVolt, (portTickType) 20))
+				{
+					uSensBattVoltage = bat;
+					uSensCntr = cntr;
+					uSensExtTemp = temp;
+					uSensSignal = signal;
+					xSemaphoreGive(xMutexBattVolt);
+				}
+				bat = 0;
+			}
+
+		}
 	}
 }
 /*-----------------------------------------------------------*/
-
-static void vStartMeasure(xTimerHandle pxTimer)
-{
-	//TODO Do SPI communication to start measure
-	//Now just set the semaphore
-
-	xSemaphoreGive(xSemaphoreTempReady);
-}
 
 /*
  * @brief	This function returns the limited value of Value

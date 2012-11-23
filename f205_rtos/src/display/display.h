@@ -91,6 +91,7 @@ uint8_t DISP_GetBacklight(void);
 void DISP_SetBacklight(uint8_t Val);
 void DISP_SetOff(void);
 void DISP_SetOn(void);
+void TIM3_IRQHandler(void);
 
 
 #endif /* DISPLAY_H_ */

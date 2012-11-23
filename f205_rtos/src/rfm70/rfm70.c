@@ -337,6 +337,8 @@
 
 #include "rfm70.h"
 #include "stm32f2xx.h"
+#include "FreeRTOS.h"
+#include "semphr.h"
 
 #define RFM70_CSN( x )   GPIO_WriteBit(GPIOB, GPIO_Pin_10, (BitAction) (x))
 #define RFM70_CE( x )    GPIO_WriteBit(GPIOA, GPIO_Pin_3, (BitAction) (x))
@@ -922,7 +924,8 @@ void rfm70_init(void)
 void RFM_PinInit(void)
 {
 	GPIO_InitTypeDef GPIO_InitStruct;
-	SPI_InitTypeDef SPI_InitStruct;
+	EXTI_InitTypeDef EXTI_InitStruct;
+	NVIC_InitTypeDef NVIC_InitStruct;
 
 	/*
 	 * PC10 - SCK
@@ -933,23 +936,24 @@ void RFM_PinInit(void)
 	 * PB11 - IRQ
 	 */
 
-	RCC_AHB1PeriphClockCmd(RCC_AHB1Periph_GPIOC | RCC_AHB1Periph_GPIOA | RCC_AHB1Periph_GPIOB, ENABLE);
-	RCC_APB1PeriphClockCmd(RCC_APB1Periph_SPI3, ENABLE);
+	RCC_AHB1PeriphClockCmd(/*RCC_AHB1Periph_GPIOC |*/ RCC_AHB1Periph_GPIOA | RCC_AHB1Periph_GPIOB, ENABLE);
+	RCC_APB2PeriphClockCmd(RCC_APB2Periph_SYSCFG, ENABLE);
+//	RCC_APB1PeriphClockCmd(RCC_APB1Periph_SPI3, ENABLE);
 
-	/*
-	 * Assign alternate function to SPI2 in order MISO, MOSI, SCK
-	 */
-	GPIO_PinAFConfig(GPIOC, GPIO_PinSource9, GPIO_AF_SPI3 );
-	GPIO_PinAFConfig(GPIOC, GPIO_PinSource10, GPIO_AF_SPI3 );
-	GPIO_PinAFConfig(GPIOC, GPIO_PinSource8, GPIO_AF_SPI3 );
-
-	/* Set MOSI, MISO, SCK */
-	GPIO_InitStruct.GPIO_Mode = GPIO_Mode_AF;
-	GPIO_InitStruct.GPIO_OType = GPIO_OType_PP;
-	GPIO_InitStruct.GPIO_PuPd = GPIO_PuPd_NOPULL;
-	GPIO_InitStruct.GPIO_Speed = GPIO_Speed_50MHz;
-	GPIO_InitStruct.GPIO_Pin = GPIO_Pin_10 | GPIO_Pin_11 | GPIO_Pin_12;
-	GPIO_Init(GPIOC, &GPIO_InitStruct);
+//	/*
+//	 * Assign alternate function to SPI3 in order MISO, MOSI, SCK
+//	 */
+//	GPIO_PinAFConfig(GPIOC, GPIO_PinSource10, GPIO_AF_SPI3 );
+//	GPIO_PinAFConfig(GPIOC, GPIO_PinSource11, GPIO_AF_SPI3 );
+//	GPIO_PinAFConfig(GPIOC, GPIO_PinSource12, GPIO_AF_SPI3 );
+//
+//	/* Set MOSI, MISO, SCK */
+//	GPIO_InitStruct.GPIO_Mode = GPIO_Mode_AF;
+//	GPIO_InitStruct.GPIO_OType = GPIO_OType_PP;
+//	GPIO_InitStruct.GPIO_PuPd = GPIO_PuPd_NOPULL;
+//	GPIO_InitStruct.GPIO_Speed = GPIO_Speed_100MHz;
+//	GPIO_InitStruct.GPIO_Pin = GPIO_Pin_10 | GPIO_Pin_11 | GPIO_Pin_12;
+//	GPIO_Init(GPIOC, &GPIO_InitStruct);
 
 	/* Set CE */
 	GPIO_InitStruct.GPIO_Mode = GPIO_Mode_OUT;
@@ -963,21 +967,35 @@ void RFM_PinInit(void)
 	GPIO_Init(GPIOB, &GPIO_InitStruct);
 	GPIO_SetBits(GPIOB, GPIO_Pin_10 );
 
-	/* SPI init */
-	SPI_StructInit(&SPI_InitStruct);
-	SPI_InitStruct.SPI_BaudRatePrescaler = SPI_BaudRatePrescaler_32;
-	SPI_InitStruct.SPI_Mode = SPI_Mode_Master;
-	SPI_InitStruct.SPI_NSS = SPI_NSS_Soft;
-	SPI_Init(SPI3, &SPI_InitStruct);
+	GPIO_InitStruct.GPIO_Mode = GPIO_Mode_IN;
+	GPIO_InitStruct.GPIO_PuPd = GPIO_PuPd_UP;
+	GPIO_InitStruct.GPIO_Pin = GPIO_Pin_11;
+	GPIO_Init(GPIOB, &GPIO_InitStruct);
 
-	SPI_Cmd(SPI3, ENABLE);
+	SYSCFG_EXTILineConfig(EXTI_PortSourceGPIOB, EXTI_PinSource11);
+
+	EXTI_InitStruct.EXTI_Line = EXTI_Line11;
+	EXTI_InitStruct.EXTI_LineCmd = ENABLE;
+	EXTI_InitStruct.EXTI_Mode = EXTI_Mode_Interrupt;
+	EXTI_InitStruct.EXTI_Trigger = EXTI_Trigger_Falling;
+	EXTI_Init(&EXTI_InitStruct);
+
+	NVIC_InitStruct.NVIC_IRQChannel = EXTI15_10_IRQn;
+	NVIC_InitStruct.NVIC_IRQChannelCmd = ENABLE;
+	NVIC_InitStruct.NVIC_IRQChannelPreemptionPriority = 0;
+	NVIC_InitStruct.NVIC_IRQChannelSubPriority = 1;
+	NVIC_Init(&NVIC_InitStruct);
+
+	/* SPI init */
+	RFM_SetSPI();
 }
 
 void RFM_SetSPI(void)
 {
 	SPI_InitTypeDef SPI_InitStruct;
 
-	SPI_Cmd(SPI3, DISABLE);
+	SPI_I2S_DeInit(SPI3);
+	RCC_APB1PeriphClockCmd(RCC_APB1Periph_SPI3, ENABLE);
 
 	SPI_StructInit(&SPI_InitStruct);
 	SPI_InitStruct.SPI_BaudRatePrescaler = SPI_BaudRatePrescaler_32;
@@ -989,4 +1007,17 @@ void RFM_SetSPI(void)
 	SPI_Cmd(SPI3, ENABLE);
 }
 
+extern xSemaphoreHandle xSemaphoreRFInt;
+void EXTI15_10_IRQHandler(void)
+{
+	static signed portBASE_TYPE xHigherPriorityTaskWoken;
 
+	if(EXTI_GetITStatus(EXTI_Line11))
+	{
+		xSemaphoreGiveFromISR(xSemaphoreRFInt, &xHigherPriorityTaskWoken);
+
+		EXTI_ClearITPendingBit(EXTI_Line11);
+
+		portEND_SWITCHING_ISR( xHigherPriorityTaskWoken );
+	}
+}

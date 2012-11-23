@@ -65,8 +65,25 @@ void EADC_Init(void)
 
 	GPIO_Init(GPIOC, &GPIO_InitStruct);
 
-	/* Wait for proper startup */
-	for(i=0;i<0xfffff;i++);
+	/* Wait for device startup */
+	while(GPIO_ReadInputDataBit(GPIOC, GPIO_Pin_8 ))
+		;
+	while(!GPIO_ReadInputDataBit(GPIOC, GPIO_Pin_8 ))
+		;
+
+	/* Wait the empty TX flag */
+	while(SPI_I2S_GetFlagStatus(SPI3, SPI_I2S_FLAG_TXE ) == RESET)
+		;
+
+	/* Send self calibration command */
+	SPI_I2S_SendData(SPI3, EADC_COMMAND_SELFOCAL);
+	while(RESET == SPI_I2S_GetFlagStatus(SPI3, SPI_I2S_FLAG_TXE ))
+		;
+
+	/* Wait some to calibrate */
+	for(i=0;i<0xff;i++);
+
+	/* Everything okay, return */
 }
 
 int32_t EADC_GetTemperature(void)
@@ -91,8 +108,8 @@ int32_t EADC_GetTemperature(void)
 	EADC_NSS_OFF();
 
 	/* Wait to do the wake up */
-	for(i = 15; i; i--)
-		;
+//	for(i = 15; i; i--)
+//		;
 
 	/* Wait until the next conversation is ready (falling edge) */
 	while(!GPIO_ReadInputDataBit(GPIOC, GPIO_Pin_8 ))
@@ -129,9 +146,7 @@ int32_t EADC_GetTemperature(void)
 void EADC_SetSPI(void)
 {
 	SPI_InitTypeDef SPI_InitStruct;
-	uint16_t i=0;
-
-	SPI_Cmd(SPI3, DISABLE);
+	uint32_t i;
 
 	SPI_StructInit(&SPI_InitStruct);
 	SPI_InitStruct.SPI_BaudRatePrescaler = SPI_BaudRatePrescaler_256;
@@ -141,8 +156,5 @@ void EADC_SetSPI(void)
 	SPI_InitStruct.SPI_NSS = SPI_NSS_Soft;
 
 	SPI_Init(SPI3, &SPI_InitStruct);
-
-	for(i=0;i<0x7fff;i++);
-	SPI_Cmd(SPI3, ENABLE);
 }
 
