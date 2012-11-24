@@ -27,6 +27,8 @@
 #ifndef _RFM70_H_
 #define _RFM70_H_
 
+#include "stm32f2xx.h"
+
 //***************************************************************************//
 //
 //! \defgroup lowlevel low level interface
@@ -727,5 +729,6 @@ unsigned char rfm70_receive(unsigned char * pipe, unsigned char *buf,
 void RFM_PinInit(void);
 void RFM_SetSPI(void);
 void EXTI15_10_IRQHandler(void);
+void RFM_ITCmd(FunctionalState NewState);
 
 #endif

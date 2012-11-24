@@ -60,10 +60,13 @@ xTaskHandle xTaskHandleMenuSelect = NULL;
 xTaskHandle xTaskHandleSetTimeDate = NULL;
 xTaskHandle xTaskHandleSetBrightness = NULL;
 xTaskHandle xTaskHandleSleep = NULL;
+xTaskHandle xTaskHandleSetRFModule = NULL;
+
+xTaskHandle xTaskHandleRFMRead = NULL;
 
 xTaskHandle * aMenuTaskPtrs[MENU_MAX + 1] = {
 		&xTaskHandleSetTimeDate, &xTaskHandleMainScreen, &xTaskHandleSetBrightness,
-		&xTaskHandleMainScreen, &xTaskHandleMainScreen, &xTaskHandleMainScreen };
+		&xTaskHandleSetRFModule, &xTaskHandleMainScreen, &xTaskHandleMainScreen };
 
 /* Global variables for temperature measuring */
 int32_t *psStartOfBuffer = NULL;
@@ -73,8 +76,7 @@ float fTempLimit = 20.0;
 
 uint16_t uSensBattVoltage = 3700;
 uint16_t uSensExtTemp = 20000;
-uint8_t uSensCntr = 0;
-uint8_t uSensSignal = 0;
+uint8_t bSensPresent = 0;
 
 /* Global variable used by Rotary */
 extern int16_t DeltaValue;
@@ -117,13 +119,16 @@ int main(void)
 			SET_BRIGHTNESS_PRIORITY, &xTaskHandleSetBrightness);
 	xTaskCreate( vTaskSleep, ( signed char * ) "Sleep", 70, NULL, SLEEP_TASK_PRIORITY,
 			&xTaskHandleSleep);
+	xTaskCreate( vTaskSetRFModule, ( signed char * ) "SetRF", 70, NULL, RFMODULE_PRIORITY,
+			&xTaskHandleSetRFModule);
 
 	xTaskCreate( prvRotaryChkTask, ( signed char * )"Rotary", 70, NULL, rotaryQUEUE_TASK_PRIORITY,
 			NULL);
 	xTaskCreate( prvTempStoreTask, ( signed char * ) "Temp", 70, NULL, tempMEASURE_TASK_PRIORITY,
 			NULL);
 
-	xTaskCreate(vTaskRFMRead, (signed char *)"rfm", 70, NULL, RFM_TASK_PRIORITY, NULL);
+	xTaskCreate(vTaskRFMRead, (signed char *)"rfm", 100, NULL, RFM_TASK_PRIORITY,
+			&xTaskHandleRFMRead);
 
 	/* Create Timers */
 	xTimerRotaryAllow = xTimerCreate((signed char *) "Rotary", ROTARY_PB_DENY, pdFALSE, (void *) 0,
@@ -134,6 +139,7 @@ int main(void)
 	vTaskSuspend(xTaskHandleSetTimeDate);
 	vTaskSuspend(xTaskHandleSetBrightness);
 	vTaskSuspend(xTaskHandleSleep);
+	vTaskSuspend(xTaskHandleSetRFModule);
 
 	/* Start the tasks and timer running. */
 	vTaskStartScheduler();
@@ -207,8 +213,7 @@ static void vTaskMainScreen(void *pvParamters)
 	uint8_t i;
 	uint16_t prvBattVoltage;
 	uint16_t prvExtTemp;
-	uint8_t prvSensCntr;
-	uint8_t prvSignal;
+	uint8_t prvbSensPresent;
 
 	/* Main loop for this task */
 	for(;;)
@@ -278,26 +283,25 @@ static void vTaskMainScreen(void *pvParamters)
 			{
 				prvBattVoltage = uSensBattVoltage;
 				prvExtTemp = uSensExtTemp;
-				prvSensCntr = uSensCntr;
-				prvSignal = uSensSignal;
+				prvbSensPresent = bSensPresent;
 				xSemaphoreGive(xMutexBattVolt);
 
-				DISP_CharWrite(5, 64, (prvBattVoltage / 1000) + '0');
-				DISP_CharWrite(5, 70, '.');
-				DISP_CharWrite(5, 76, (prvBattVoltage % 1000) / 100 + '0');
-				DISP_CharWrite(5, 82, (prvBattVoltage % 100) / 10 + '0');
+				if(prvbSensPresent)
+				{
+					DISP_StringWrite(4, 0, "RF:");
+					prvBattVoltage += 50;
+					DISP_CharWrite(5, 0, (prvBattVoltage / 1000) + '0');
+					DISP_CharWrite(5, 6, '.');
+					DISP_CharWrite(5, 12, (prvBattVoltage % 1000) / 100 + '0');
+					DISP_CharWrite(5, 18, 'V');
 
-				DISP_CharWrite(6, 58, (prvExtTemp / 10000) + '0');
-				DISP_CharWrite(6, 64, (prvExtTemp % 10000) / 1000 + '0');
-				DISP_CharWrite(6, 70, '.');
-				DISP_CharWrite(6, 76, (prvExtTemp % 1000) / 100 + '0');
-
-				DISP_CharWrite(5, 0, (prvSensCntr / 100) + '0');
-				DISP_CharWrite(5, 6, (prvSensCntr % 100) / 10 + '0');
-				DISP_CharWrite(5, 12, (prvSensCntr % 10) + '0');
-
-				DISP_CharWrite(6, 0, (prvSignal / 10) + '0');
-				DISP_CharWrite(6, 6, (prvSignal % 10) + '0');
+					DISP_CharWrite(6, 0, (prvExtTemp / 10000) + '0');
+					DISP_CharWrite(6, 6, (prvExtTemp % 10000) / 1000 + '0');
+					DISP_CharWrite(6, 12, '.');
+					DISP_CharWrite(6, 18, (prvExtTemp % 1000) / 100 + '0');
+					DISP_CharWrite(6, 24, 133);
+					DISP_CharWrite(6, 30, 'C');
+				}
 			}
 			bUpdateNeed = 0;
 		}
@@ -615,7 +619,6 @@ static void vTaskSetTimeDate(void *pvParamters)
 			}
 		}
 	}
-
 }
 
 /* This task sets the display's brightness */
@@ -682,7 +685,6 @@ static void vTaskSetBrightness(void *pvParamters)
 			}
 		}
 	}
-
 }
 
 /* This task goes to sleep mode */
@@ -706,7 +708,109 @@ static void vTaskSleep(void *pvParamters)
 			vTaskSuspend(NULL );
 		}
 	}
+}
 
+/* This task sets the rf module */
+static void vTaskSetRFModule(void *pvParamters)
+{
+	/* Local variables */
+	int8_t sReceivedValue;
+	uint16_t uIdleCntr = 0;
+	uint8_t bInitNeed = 1;
+	uint8_t bRfStatus = 0;
+	uint8_t bRfNewStatus = 0;
+
+	/* Main loop for this task */
+	for(;;)
+	{
+		/* Do some initialization */
+		if(bInitNeed)
+		{
+			DISP_StringWrite(4, 35, "Radios modul:");
+			if(bRfStatus)
+				DISP_StringWriteInvert(5, 58, "Be");
+			else
+				DISP_StringWriteInvert(5, 58, "Ki");
+			bInitNeed = 0;
+		}
+
+		/* Wait for rotary action */
+		if(xQueueReceive(xQueueMenu, &sReceivedValue, MENU_UPDATE_FREQUENCY))
+		{
+			if(sReceivedValue != 0)
+			{
+				/* Rotation received */
+				bRfNewStatus = (bRfNewStatus + sReceivedValue) & 0x01;
+				if(bRfNewStatus)
+					DISP_StringWriteInvert(5, 58, "Be");
+				else
+					DISP_StringWriteInvert(5, 58, "Ki");
+			}
+			else
+			{
+				/* Clear display */
+				DISP_Clear();
+				bInitNeed = 1;
+
+				/* Push button received */
+				if(bRfNewStatus && !bRfStatus)
+				{
+					/* Turn on */
+					if(xSemaphoreTake(xMutexSPIUse, (portTickType) 20))
+					{
+						RFM_SetSPI();
+						rfm70_mode_receive();
+						RFM_ITCmd(ENABLE);
+						vTaskResume(xTaskHandleRFMRead);
+						xSemaphoreGive(xMutexSPIUse);
+
+						if(xSemaphoreTake(xMutexBattVolt, 10 * portTICK_RATE_MS))
+						{
+							bSensPresent = 1;
+							xSemaphoreGive(xMutexBattVolt);
+						}
+					}
+				}
+				else if(!bRfNewStatus && bRfStatus)
+				{
+					/* Turn off */
+					if(xSemaphoreTake(xMutexSPIUse, (portTickType) 20))
+					{
+						RFM_SetSPI();
+						rfm70_mode_powerdown();
+						RFM_ITCmd(DISABLE);
+						vTaskSuspend(xTaskHandleRFMRead);
+						xSemaphoreGive(xMutexSPIUse);
+
+						if(xSemaphoreTake(xMutexBattVolt, 10 * portTICK_RATE_MS))
+						{
+							bSensPresent = 0;
+							xSemaphoreGive(xMutexBattVolt);
+						}
+					}
+				}
+				bRfStatus = bRfNewStatus;
+
+				/* Return back to main screen task */
+				vTaskResume(xTaskHandleMainScreen);
+				vTaskSuspend(NULL );
+			}
+			uIdleCntr = 0;
+		}
+		else
+		{
+			if(++uIdleCntr >= MENU_EXIT_COUNTER)
+			{
+				uIdleCntr = 0;
+				bInitNeed = 1;
+				DISP_Clear();
+
+				/* Change back to main screen task */
+				vTaskResume(xTaskHandleMainScreen);
+				vTaskSuspend(NULL );
+			}
+		}
+	}
 }
 
 /*-----------------------------------------------------------*/
@@ -810,7 +914,6 @@ static void prvTempStoreTask(void *pvParameters)
 
 static void vTaskRFMRead(void *pvParameters)
 {
-	portTickType xNextWakeTime;
 	uint8_t aReceiveBuff[32];
 	uint8_t uPipe;
 	uint8_t uLength;
@@ -820,18 +923,14 @@ static void vTaskRFMRead(void *pvParameters)
 	uint8_t cntr;
 	uint8_t signal;
 
-	/* Allocate space */
-
-	/* Initialize xNextWakeTime - this only needs to be done once. */
-	//xNextWakeTime = xTaskGetTickCount();
-	/* Init RF module */
 	xSemaphoreTake(xMutexSPIUse, portMAX_DELAY);
 	rfm70_init();
+	rfm70_mode_powerdown();
 	xSemaphoreGive(xMutexSPIUse);
-
+	RFM_ITCmd(DISABLE);
+	vTaskSuspend(NULL );
 	for(;;)
 	{
-		//vTaskDelayUntil(&xNextWakeTime, RFM_READ_FREQ);
 		xSemaphoreTake(xSemaphoreRFInt, portMAX_DELAY);
 
 		uPipe = 6;
@@ -849,8 +948,6 @@ static void vTaskRFMRead(void *pvParameters)
 					{
 						bat = aReceiveBuff[0] | (aReceiveBuff[1] << 8);
 						temp = aReceiveBuff[2] | (aReceiveBuff[3] << 8);
-						cntr = aReceiveBuff[4];
-						signal = aReceiveBuff[5];
 					}
 
 				}
@@ -862,9 +959,7 @@ static void vTaskRFMRead(void *pvParameters)
 				if(xSemaphoreTake(xMutexBattVolt, (portTickType) 20))
 				{
 					uSensBattVoltage = bat;
-					uSensCntr = cntr;
 					uSensExtTemp = temp;
-					uSensSignal = signal;
 					xSemaphoreGive(xMutexBattVolt);
 				}
 				bat = 0;

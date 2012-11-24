@@ -336,7 +336,6 @@
 //***************************************************************************//
 
 #include "rfm70.h"
-#include "stm32f2xx.h"
 #include "FreeRTOS.h"
 #include "semphr.h"
 
@@ -924,8 +923,6 @@ void rfm70_init(void)
 void RFM_PinInit(void)
 {
 	GPIO_InitTypeDef GPIO_InitStruct;
-	EXTI_InitTypeDef EXTI_InitStruct;
-	NVIC_InitTypeDef NVIC_InitStruct;
 
 	/*
 	 * PC10 - SCK
@@ -956,8 +953,10 @@ void RFM_PinInit(void)
 //	GPIO_Init(GPIOC, &GPIO_InitStruct);
 
 	/* Set CE */
+	GPIO_StructInit(&GPIO_InitStruct);
 	GPIO_InitStruct.GPIO_Mode = GPIO_Mode_OUT;
 	GPIO_InitStruct.GPIO_Pin = GPIO_Pin_3;
+	GPIO_InitStruct.GPIO_Speed = GPIO_Speed_100MHz;
 	GPIO_Init(GPIOA, &GPIO_InitStruct);
 	GPIO_ResetBits(GPIOA, GPIO_Pin_3 );
 
@@ -972,19 +971,7 @@ void RFM_PinInit(void)
 	GPIO_InitStruct.GPIO_Pin = GPIO_Pin_11;
 	GPIO_Init(GPIOB, &GPIO_InitStruct);
 
-	SYSCFG_EXTILineConfig(EXTI_PortSourceGPIOB, EXTI_PinSource11);
-
-	EXTI_InitStruct.EXTI_Line = EXTI_Line11;
-	EXTI_InitStruct.EXTI_LineCmd = ENABLE;
-	EXTI_InitStruct.EXTI_Mode = EXTI_Mode_Interrupt;
-	EXTI_InitStruct.EXTI_Trigger = EXTI_Trigger_Falling;
-	EXTI_Init(&EXTI_InitStruct);
-
-	NVIC_InitStruct.NVIC_IRQChannel = EXTI15_10_IRQn;
-	NVIC_InitStruct.NVIC_IRQChannelCmd = ENABLE;
-	NVIC_InitStruct.NVIC_IRQChannelPreemptionPriority = 0;
-	NVIC_InitStruct.NVIC_IRQChannelSubPriority = 1;
-	NVIC_Init(&NVIC_InitStruct);
+	RFM_ITCmd(ENABLE);
 
 	/* SPI init */
 	RFM_SetSPI();
@@ -1020,4 +1007,24 @@ void EXTI15_10_IRQHandler(void)
 
 		portEND_SWITCHING_ISR( xHigherPriorityTaskWoken );
 	}
+}
+
+void RFM_ITCmd(FunctionalState NewState)
+{
+	EXTI_InitTypeDef EXTI_InitStruct;
+	NVIC_InitTypeDef NVIC_InitStruct;
+
+	SYSCFG_EXTILineConfig(EXTI_PortSourceGPIOB, EXTI_PinSource11);
+
+	EXTI_InitStruct.EXTI_Line = EXTI_Line11;
+	EXTI_InitStruct.EXTI_LineCmd = ENABLE;
+	EXTI_InitStruct.EXTI_Mode = EXTI_Mode_Interrupt;
+	EXTI_InitStruct.EXTI_Trigger = EXTI_Trigger_Falling;
+	EXTI_Init(&EXTI_InitStruct);
+
+	NVIC_InitStruct.NVIC_IRQChannel = EXTI15_10_IRQn;
+	NVIC_InitStruct.NVIC_IRQChannelCmd = NewState;
+	NVIC_InitStruct.NVIC_IRQChannelPreemptionPriority = 0;
+	NVIC_InitStruct.NVIC_IRQChannelSubPriority = 1;
+	NVIC_Init(&NVIC_InitStruct);
 }

@@ -32,6 +32,7 @@
 #define SET_TIMEDATE_PRIORITY				( tskIDLE_PRIORITY + 2 )
 #define SET_BRIGHTNESS_PRIORITY			( tskIDLE_PRIORITY + 2 )
 #define SLEEP_TASK_PRIORITY				( tskIDLE_PRIORITY + 2 )
+#define RFMODULE_PRIORITY					( tskIDLE_PRIORITY + 2 )
 
 #define ROTARY_CHK_FREQUENCY				( 100 / portTICK_RATE_MS )
 #define ROTARY_PB_DENY						( 200 / portTICK_RATE_MS )
@@ -61,6 +62,7 @@ static void vTaskMenuSelect(void *pvParameters);
 static void vTaskSetTimeDate(void *pvParameters);
 static void vTaskSetBrightness(void *pvParameters);
 static void vTaskSleep(void *pvParameters);
+static void vTaskSetRFModule(void *pvParamters);
 
 static void vTaskRFMRead(void *pvParameters);
 

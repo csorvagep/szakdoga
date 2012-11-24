@@ -11,6 +11,6 @@
 #define MENU_MAX 5
 
 const char *first_row[] = {
-		"Ora/Datum", "Ventillator", "Fenyero", "Kijelzo", "Ejszakai mod", "[Kilepes]" };
+		"Ora/Datum", "Ventillator", "Fenyero", "Radios Modul", "Ejszakai mod", "[Kilepes]" };
 
 #endif /* MENU_H_ */
