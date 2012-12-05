@@ -16,6 +16,8 @@ void EADC_Init(void)
 {
 	GPIO_InitTypeDef GPIO_InitStruct;
 	SPI_InitTypeDef SPI_InitStruct;
+	EXTI_InitTypeDef EXTI_InitStruct;
+	NVIC_InitTypeDef NVIC_InitStruct;
 	uint32_t i;
 
 	/* Enable the SPI3, SYCFG and GPIO clock source */
@@ -46,8 +48,6 @@ void EADC_Init(void)
 
 	GPIO_Init(GPIOA, &GPIO_InitStruct);
 
-	//GPIO_PinAFConfig(GPIOA, GPIO_PinSource15, GPIO_AF_SPI3);
-
 	SPI_StructInit(&SPI_InitStruct);
 	SPI_InitStruct.SPI_BaudRatePrescaler = SPI_BaudRatePrescaler_256;
 	SPI_InitStruct.SPI_CPOL = SPI_CPOL_Low;
@@ -62,8 +62,23 @@ void EADC_Init(void)
 	GPIO_InitStruct.GPIO_Mode = GPIO_Mode_IN;
 	GPIO_InitStruct.GPIO_PuPd = GPIO_PuPd_UP;
 	GPIO_InitStruct.GPIO_Pin = GPIO_Pin_8;
-
 	GPIO_Init(GPIOC, &GPIO_InitStruct);
+
+	RCC_APB2PeriphClockCmd(RCC_APB2Periph_SYSCFG, ENABLE);
+
+	SYSCFG_EXTILineConfig(EXTI_PortSourceGPIOC, EXTI_PinSource8);
+
+	EXTI_InitStruct.EXTI_Line = EXTI_Line8;
+	EXTI_InitStruct.EXTI_LineCmd = ENABLE;
+	EXTI_InitStruct.EXTI_Mode = EXTI_Mode_Interrupt;
+	EXTI_InitStruct.EXTI_Trigger = EXTI_Trigger_Falling;
+	EXTI_Init(&EXTI_InitStruct);
+
+	NVIC_InitStruct.NVIC_IRQChannel = EXTI9_5_IRQn;
+	NVIC_InitStruct.NVIC_IRQChannelCmd = DISABLE;
+	NVIC_InitStruct.NVIC_IRQChannelPreemptionPriority = 10;
+	NVIC_InitStruct.NVIC_IRQChannelSubPriority = 0;
+	NVIC_Init(&NVIC_InitStruct);
 
 	/* Wait for device startup */
 	while(GPIO_ReadInputDataBit(GPIOC, GPIO_Pin_8 ))
@@ -156,5 +171,15 @@ void EADC_SetSPI(void)
 	SPI_InitStruct.SPI_NSS = SPI_NSS_Soft;
 
 	SPI_Init(SPI3, &SPI_InitStruct);
+}
+
+void EXTI9_5_IRQHandler(void)
+{
+	static uint32_t tick = 0;
+	if(EXTI_GetFlagStatus(EXTI_Line8))
+	{
+		tick = xTaskGetTickCountFromISR();
+		EXTI_ClearITPendingBit(EXTI_Line8);
+	}
 }
 

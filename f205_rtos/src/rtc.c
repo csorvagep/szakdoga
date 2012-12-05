@@ -96,22 +96,27 @@ void RTC_Config(void)
 
 void RTC_TimeToString(char* String, RTCShowSeconds_TypeDef Show)
 {
+	static uint8_t bLeadZero = 0;
+	bLeadZero = 0;
 	RTC_GetTime(RTC_Format_BCD, &RTC_TimeStructure);
-	String[0] = (char) ((RTC_TimeStructure.RTC_Hours >> 4) + '0');
-	String[1] = (char) ((RTC_TimeStructure.RTC_Hours & 0x0f) + '0');
-	String[2] = ':';
-	String[3] = (char) ((RTC_TimeStructure.RTC_Minutes >> 4) + '0');
-	String[4] = (char) ((RTC_TimeStructure.RTC_Minutes & 0x0f) + '0');
+	if((RTC_TimeStructure.RTC_Hours >> 4) == 0 && !Show )
+		bLeadZero = 1;
+	if(!bLeadZero || Show)
+		String[0] = (char) ((RTC_TimeStructure.RTC_Hours >> 4) + '0');
+	String[1-bLeadZero] = (char) ((RTC_TimeStructure.RTC_Hours & 0x0f) + '0');
+	String[2-bLeadZero] = ':';
+	String[3-bLeadZero] = (char) ((RTC_TimeStructure.RTC_Minutes >> 4) + '0');
+	String[4-bLeadZero] = (char) ((RTC_TimeStructure.RTC_Minutes & 0x0f) + '0');
 	if(Show)
 	{
-		String[5] = ':';
-		String[6] = (char) ((RTC_TimeStructure.RTC_Seconds >> 4) + '0');
-		String[7] = (char) ((RTC_TimeStructure.RTC_Seconds & 0x0f) + '0');
-		String[8] = '\0';
+		String[5-bLeadZero] = ':';
+		String[6-bLeadZero] = (char) ((RTC_TimeStructure.RTC_Seconds >> 4) + '0');
+		String[7-bLeadZero] = (char) ((RTC_TimeStructure.RTC_Seconds & 0x0f) + '0');
+		String[8-bLeadZero] = '\0';
 	}
 	else
 	{
-		String[5] = '\0';
+		String[5-bLeadZero] = '\0';
 	}
 }
 

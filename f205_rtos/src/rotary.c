@@ -42,8 +42,8 @@ void ROT_Init()
 	TIM_TimeBaseInit(TIM2, &TIM_InitStruct);
 	NVIC_InitStruct.NVIC_IRQChannel = TIM2_IRQn;
 	NVIC_InitStruct.NVIC_IRQChannelCmd = ENABLE;
-	NVIC_InitStruct.NVIC_IRQChannelPreemptionPriority = 0;
-	NVIC_InitStruct.NVIC_IRQChannelSubPriority = 1;
+	NVIC_InitStruct.NVIC_IRQChannelPreemptionPriority = 4;
+	NVIC_InitStruct.NVIC_IRQChannelSubPriority = 0;
 
 	NVIC_Init(&NVIC_InitStruct);
 
@@ -56,14 +56,14 @@ void ROT_Init()
 	EXTI_InitStruct.EXTI_Line = EXTI_Line0;
 	EXTI_InitStruct.EXTI_LineCmd = ENABLE;
 	EXTI_InitStruct.EXTI_Mode = EXTI_Mode_Interrupt;
-	EXTI_InitStruct.EXTI_Trigger = EXTI_Trigger_Falling;
+	EXTI_InitStruct.EXTI_Trigger = EXTI_Trigger_Rising;
 
 	EXTI_Init(&EXTI_InitStruct);
 
 	NVIC_InitStruct.NVIC_IRQChannel = EXTI0_IRQn;
 	NVIC_InitStruct.NVIC_IRQChannelCmd = ENABLE;
-	NVIC_InitStruct.NVIC_IRQChannelPreemptionPriority = 0;
-	NVIC_InitStruct.NVIC_IRQChannelSubPriority = 2;
+	NVIC_InitStruct.NVIC_IRQChannelPreemptionPriority = 6;
+	NVIC_InitStruct.NVIC_IRQChannelSubPriority = 0;
 
 	NVIC_Init(&NVIC_InitStruct);
 
@@ -114,6 +114,8 @@ void EXTI0_IRQHandler(void)
 
 		NVIC_InitStruct.NVIC_IRQChannel = EXTI0_IRQn;
 		NVIC_InitStruct.NVIC_IRQChannelCmd = DISABLE;
+		NVIC_InitStruct.NVIC_IRQChannelPreemptionPriority = 6;
+		NVIC_InitStruct.NVIC_IRQChannelSubPriority = 0;
 		NVIC_Init(&NVIC_InitStruct);
 
 		EXTI_ClearFlag(EXTI_Line0 );

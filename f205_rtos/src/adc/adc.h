@@ -9,6 +9,7 @@
 #define EADC_H_
 
 #include "stm32f2xx.h"
+#include "FreeRTOS.h"
 
 /* ADS1246 Register Addresses */
 typedef enum
@@ -54,6 +55,8 @@ typedef enum
 
 #define EADC_NSS_ON()		GPIO_ResetBits(GPIOA, GPIO_Pin_15)
 #define EADC_NSS_OFF()		GPIO_SetBits(GPIOA, GPIO_Pin_15)
+
+#define EADC_CORR					1.008634f
 
 
 void EADC_Init(void);

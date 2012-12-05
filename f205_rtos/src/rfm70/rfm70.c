@@ -1024,7 +1024,7 @@ void RFM_ITCmd(FunctionalState NewState)
 
 	NVIC_InitStruct.NVIC_IRQChannel = EXTI15_10_IRQn;
 	NVIC_InitStruct.NVIC_IRQChannelCmd = NewState;
-	NVIC_InitStruct.NVIC_IRQChannelPreemptionPriority = 0;
-	NVIC_InitStruct.NVIC_IRQChannelSubPriority = 1;
+	NVIC_InitStruct.NVIC_IRQChannelPreemptionPriority = 7;
+	NVIC_InitStruct.NVIC_IRQChannelSubPriority = 0;
 	NVIC_Init(&NVIC_InitStruct);
 }

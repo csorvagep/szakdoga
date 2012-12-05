@@ -62,17 +62,25 @@ xTaskHandle xTaskHandleSetBrightness = NULL;
 xTaskHandle xTaskHandleSleep = NULL;
 xTaskHandle xTaskHandleSetRFModule = NULL;
 
+xTaskHandle xTaskHandleTurnOff = NULL;
+
 xTaskHandle xTaskHandleRFMRead = NULL;
+
+xTaskHandle xTaskHandleUSB = NULL;
 
 xTaskHandle * aMenuTaskPtrs[MENU_MAX + 1] = {
 		&xTaskHandleSetTimeDate, &xTaskHandleMainScreen, &xTaskHandleSetBrightness,
-		&xTaskHandleSetRFModule, &xTaskHandleMainScreen, &xTaskHandleMainScreen };
+		&xTaskHandleSetRFModule, &xTaskHandleMainScreen, &xTaskHandleTurnOff };
+
+
+xTaskHandle * aDisplayTasks[DISP_TASKS_COUNT] = {&xTaskHandleSetTimeDate, &xTaskHandleMainScreen, &xTaskHandleSetBrightness,
+		&xTaskHandleSetRFModule, &xTaskHandleMenuSelect, &xTaskHandleSleep};
 
 /* Global variables for temperature measuring */
 int32_t *psStartOfBuffer = NULL;
 uint8_t uBuffCntr = 0;
-int32_t sTempLimit = 0x4e8f0;
-float fTempLimit = 20.0;
+int32_t sTempLimit = 317005;
+float fTempLimit = 19.0;
 
 uint16_t uSensBattVoltage = 3700;
 uint16_t uSensExtTemp = 20000;
@@ -81,11 +89,16 @@ uint8_t bSensPresent = 0;
 /* Global variable used by Rotary */
 extern int16_t DeltaValue;
 
+/*USB*/
+__ALIGN_BEGIN USB_OTG_CORE_HANDLE      USB_OTG_Core __ALIGN_END;
+__ALIGN_BEGIN USBH_HOST                USB_Host __ALIGN_END;
+
+
 /* Main Function, Program entry point */
 int main(void)
 {
 	/* Ensure that all 4 interrupt priority bits are used as the pre-emption priority. */
-	NVIC_PriorityGroupConfig(NVIC_PriorityGroup_2 ); // TODO Megnézni jó-e így
+	NVIC_PriorityGroupConfig(NVIC_PriorityGroup_4 );
 
 	/* Initialize the components */
 	Backlight_Init();
@@ -94,6 +107,8 @@ int main(void)
 	ROT_Init(); //TODO visszatérés, hogy ha be kell állítani akkor azzal kezdjen
 	RTCInit();
 	EADC_Init();
+
+	USBH_Init(&USB_OTG_Core, USB_OTG_FS_CORE_ID, &USB_Host, &USBH_MSC_cb, &USR_cb);
 
 	/* Create Queues */
 	xQueueMenu = xQueueCreate( menuQUEUE_LENGTH, sizeof( int8_t ) );
@@ -121,6 +136,11 @@ int main(void)
 			&xTaskHandleSleep);
 	xTaskCreate( vTaskSetRFModule, ( signed char * ) "SetRF", 70, NULL, RFMODULE_PRIORITY,
 			&xTaskHandleSetRFModule);
+	xTaskCreate( vTaskTurnOff, ( signed char * ) "Off", 20, NULL, TURNOFF_PRIORITY,
+			&xTaskHandleTurnOff);
+
+	xTaskCreate( vTaskUSB, ( signed char * ) "USB", 300, NULL, USB_PRIORITY,
+			&xTaskHandleUSB);
 
 	xTaskCreate( prvRotaryChkTask, ( signed char * )"Rotary", 70, NULL, rotaryQUEUE_TASK_PRIORITY,
 			NULL);
@@ -140,6 +160,7 @@ int main(void)
 	vTaskSuspend(xTaskHandleSetBrightness);
 	vTaskSuspend(xTaskHandleSleep);
 	vTaskSuspend(xTaskHandleSetRFModule);
+	vTaskSuspend(xTaskHandleTurnOff);
 
 	/* Start the tasks and timer running. */
 	vTaskStartScheduler();
@@ -161,8 +182,8 @@ void vAllowRotary(xTimerHandle pxTimer)
 
 	NVIC_InitStruct.NVIC_IRQChannel = EXTI0_IRQn;
 	NVIC_InitStruct.NVIC_IRQChannelCmd = ENABLE;
-	NVIC_InitStruct.NVIC_IRQChannelPreemptionPriority = 0;
-	NVIC_InitStruct.NVIC_IRQChannelSubPriority = 1;
+	NVIC_InitStruct.NVIC_IRQChannelPreemptionPriority = 6;
+	NVIC_InitStruct.NVIC_IRQChannelSubPriority = 0;
 
 	NVIC_Init(&NVIC_InitStruct);
 }
@@ -224,6 +245,11 @@ static void vTaskMainScreen(void *pvParamters)
 		{
 			/* Update the time and date */
 			RTC_TimeToString(time_string, RTC_ShowSeconds_No);
+			for(i=0; i<50; i++)
+			{
+				DISP_BlockWrite(0,i,0x00);
+				DISP_BlockWrite(1,i,0x00);
+			}
 			DISP_2LineStringWrite(1, 0, time_string);
 			RTC_DateToString(time_string);
 			DISP_StringWrite(2, 0, time_string);
@@ -242,7 +268,7 @@ static void vTaskMainScreen(void *pvParamters)
 					prvTemp /= 5;
 
 					/* Write out the temperature  */
-					fRt = 27.E3 * (prvTemp) / (0x7fffff - prvTemp);
+					fRt = 27.E3 * (prvTemp * EADC_CORR) / (0x7fffff - prvTemp);
 					fT = (fRt - 1000) / 3.85;
 					DISP_2LineNumWrite(1, 79, ((uint8_t) floor(fT / 10.0)) + '0');
 					DISP_2LineNumWrite(1, 90, ((uint8_t) fT % (uint8_t) 10.0) + '0');
@@ -348,6 +374,7 @@ static void vTaskMainScreen(void *pvParamters)
 					/* Compute the new ADC limit */
 					fRt = (prvfTempLimit * 3.85 + 1000);
 					prvsTempLimit = (int32_t) ((fRt * (float) 0x7fffff) / (fRt + 2.7e4));
+					prvsTempLimit /= EADC_CORR;
 
 					/* Store the new limits */
 					if(xSemaphoreTake(xMutexTempLimit, 10 * portTICK_RATE_MS))
@@ -727,6 +754,7 @@ static void vTaskSetRFModule(void *pvParamters)
 		if(bInitNeed)
 		{
 			DISP_StringWrite(4, 35, "Radios modul:");
+			DISP_BlockWrite(5, 57, 0xff);
 			if(bRfStatus)
 				DISP_StringWriteInvert(5, 58, "Be");
 			else
@@ -813,6 +841,12 @@ static void vTaskSetRFModule(void *pvParamters)
 	}
 }
 
+static void vTaskTurnOff(void *pvParameters)
+{
+	PWR_WakeUpPinCmd(ENABLE);
+	PWR_EnterSTANDBYMode();
+}
+
 /*-----------------------------------------------------------*/
 static void prvTempStoreTask(void *pvParameters)
 {
@@ -846,6 +880,7 @@ static void prvTempStoreTask(void *pvParameters)
 	xSemaphoreGive(xMutexTempMemory);
 
 	/* Start the display */
+	DISP_Clear();
 	vTaskResume(xTaskHandleMainScreen);
 
 	/* Initialize xNextWakeTime - this only needs to be done once. */
@@ -920,8 +955,6 @@ static void vTaskRFMRead(void *pvParameters)
 
 	uint16_t bat;
 	uint16_t temp;
-	uint8_t cntr;
-	uint8_t signal;
 
 	xSemaphoreTake(xMutexSPIUse, portMAX_DELAY);
 	rfm70_init();
@@ -966,6 +999,20 @@ static void vTaskRFMRead(void *pvParameters)
 			}
 
 		}
+	}
+}
+
+static void vTaskUSB(void *pvParameters)
+{
+	portTickType xNextWakeTime;
+
+	/* Initialize xNextWakeTime - this only needs to be done once. */
+	xNextWakeTime = xTaskGetTickCount();
+
+	for(;;)
+	{
+		vTaskDelayUntil(&xNextWakeTime, 20);
+		USBH_Process(&USB_OTG_Core, &USB_Host);
 	}
 }
 /*-----------------------------------------------------------*/

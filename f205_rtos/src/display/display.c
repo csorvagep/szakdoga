@@ -91,8 +91,8 @@ void Backlight_Init()
 
 	NVIC_InitStruct.NVIC_IRQChannel = TIM3_IRQn;
 	NVIC_InitStruct.NVIC_IRQChannelCmd = ENABLE;
-	NVIC_InitStruct.NVIC_IRQChannelPreemptionPriority = 1;
-	NVIC_InitStruct.NVIC_IRQChannelSubPriority = 2;
+	NVIC_InitStruct.NVIC_IRQChannelPreemptionPriority = 4;
+	NVIC_InitStruct.NVIC_IRQChannelSubPriority = 0;
 	NVIC_Init(&NVIC_InitStruct);
 }
 

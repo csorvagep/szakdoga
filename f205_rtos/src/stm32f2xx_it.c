@@ -22,6 +22,10 @@
   */ 
 
 /* Includes ------------------------------------------------------------------*/
+#include "usb_bsp.h"
+#include "usb_hcd_int.h"
+#include "usbh_core.h"
+
 #include "stm32f2xx_it.h"
 //#include "FreeRTOS.h"
 //#include "semphr.h"
@@ -33,8 +37,11 @@
 /* Private typedef -----------------------------------------------------------*/
 /* Private define ------------------------------------------------------------*/
 /* Private macro -------------------------------------------------------------*/
-/* Private variables ---------------------------------------------------------*/
+extern USB_OTG_CORE_HANDLE          USB_OTG_Core;
+extern USBH_HOST                    USB_Host;
+
 /* Private function prototypes -----------------------------------------------*/
+extern void USB_OTG_BSP_TimerIRQ (void);
 /* Private functions ---------------------------------------------------------*/
 
 /******************************************************************************/
@@ -164,5 +171,44 @@ void DebugMon_Handler(void)
 /**
   * @}
   */ 
+
+/**
+  * @brief  EXTI1_IRQHandler
+  *         This function handles External line 1 interrupt request.
+  * @param  None
+  * @retval None
+  */
+void EXTI1_IRQHandler(void)
+{
+  if(EXTI_GetITStatus(EXTI_Line1) != RESET)
+  {
+      USB_Host.usr_cb->OverCurrentDetected();
+      EXTI_ClearITPendingBit(EXTI_Line1);
+  }
+}
+/**
+  * @brief  TIM2_IRQHandler
+  *         This function handles Timer2 Handler.
+  * @param  None
+  * @retval None
+  */
+void TIM4_IRQHandler(void)
+{
+  USB_OTG_BSP_TimerIRQ();
+}
+
+
+/**
+  * @brief  OTG_FS_IRQHandler
+  *          This function handles USB-On-The-Go FS global interrupt request.
+  *          requests.
+  * @param  None
+  * @retval None
+  */
+void OTG_FS_IRQHandler(void)
+{
+  USBH_OTG_ISR_Handler(&USB_OTG_Core);
+}
+
 
 /******************* (C) COPYRIGHT 2011 STMicroelectronics *****END OF FILE****/
