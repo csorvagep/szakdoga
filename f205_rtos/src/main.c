@@ -55,6 +55,7 @@ xSemaphoreHandle xMutexBattVolt = NULL;
 xSemaphoreHandle xSemaphoreTempReady = NULL;
 xSemaphoreHandle xSemaphoreRFInt = NULL;
 xSemaphoreHandle xSemaphoreSleep = NULL;
+xSemaphoreHandle xSemaphoreRotaryIT = NULL;
 
 /* Task Handles */
 xTaskHandle xTaskHandleMainScreen = NULL;
@@ -73,15 +74,15 @@ xTaskHandle * aMenuTaskPtrs[MENU_MAX + 1] = {
 		&xTaskHandleSetTimeDate, &xTaskHandleMainScreen, &xTaskHandleSetBrightness,
 		&xTaskHandleSetRFModule, &xTaskHandleMainScreen, &xTaskHandleTurnOff };
 
-
-xTaskHandle * aDisplayTasks[DISP_TASKS_COUNT] = {&xTaskHandleSetTimeDate, &xTaskHandleMainScreen, &xTaskHandleSetBrightness,
-		&xTaskHandleSetRFModule, &xTaskHandleMenuSelect};
+xTaskHandle * aDisplayTasks[DISP_TASKS_COUNT] = {
+		&xTaskHandleSetTimeDate, &xTaskHandleMainScreen, &xTaskHandleSetBrightness,
+		&xTaskHandleSetRFModule, &xTaskHandleMenuSelect };
 
 /* Global variables for temperature measuring */
 int32_t *psStartOfBuffer = NULL;
 uint8_t uBuffCntr = 0;
-int32_t sTempLimit = 317005;
-float fTempLimit = 19.0;
+__IO int32_t * psTempLimit;
+__IO float * pfTempLimit;
 
 uint16_t uSensBattVoltage = 3700;
 uint16_t uSensExtTemp = 20000;
@@ -91,9 +92,8 @@ uint8_t bSensPresent = 0;
 extern int16_t DeltaValue;
 
 /*USB*/
-__ALIGN_BEGIN USB_OTG_CORE_HANDLE      USB_OTG_Core __ALIGN_END;
-__ALIGN_BEGIN USBH_HOST                USB_Host __ALIGN_END;
-
+__ALIGN_BEGIN USB_OTG_CORE_HANDLE USB_OTG_Core __ALIGN_END;
+__ALIGN_BEGIN USBH_HOST USB_Host __ALIGN_END;
 
 /* Main Function, Program entry point */
 int main(void)
@@ -102,14 +102,14 @@ int main(void)
 	NVIC_PriorityGroupConfig(NVIC_PriorityGroup_4 );
 
 	/* Initialize the components */
+	RTCInit();
 	Backlight_Init();
 	DISP_Init();
 	RELAY_Init();
-	ROT_Init(); //TODO visszatérés, hogy ha be kell állítani akkor azzal kezdjen
-	RTCInit();
+	ROT_Init();
 	EADC_Init();
 
-	USBH_Init(&USB_OTG_Core, USB_OTG_FS_CORE_ID, &USB_Host, &USBH_MSC_cb, &USR_cb);
+	//USBH_Init(&USB_OTG_Core, USB_OTG_FS_CORE_ID, &USB_Host, &USBH_MSC_cb, &USR_cb);
 
 	/* Create Queues */
 	xQueueMenu = xQueueCreate( menuQUEUE_LENGTH, sizeof( int8_t ) );
@@ -124,8 +124,10 @@ int main(void)
 	vSemaphoreCreateBinary(xSemaphoreTempReady);
 	vSemaphoreCreateBinary(xSemaphoreRFInt);
 	vSemaphoreCreateBinary(xSemaphoreSleep);
+	vSemaphoreCreateBinary(xSemaphoreRotaryIT);
 
 	xSemaphoreTake(xSemaphoreSleep, 0);
+	xSemaphoreTake(xSemaphoreRotaryIT, 0);
 
 	/* Create Tasks */
 	xTaskCreate( vTaskMainScreen, ( signed char * ) "MainScreen", 100, NULL, MAIN_SCREEN_PRIORITY,
@@ -145,6 +147,8 @@ int main(void)
 //			&xTaskHandleUSB);
 
 	xTaskCreate( prvRotaryChkTask, ( signed char * )"Rotary", 70, NULL, rotaryQUEUE_TASK_PRIORITY,
+			NULL);
+	xTaskCreate( vTaskRotaryIT, ( signed char * ) "RotaryIT", 70, NULL, rotaryQUEUE_TASK_PRIORITY,
 			NULL);
 	xTaskCreate( prvTempStoreTask, ( signed char * ) "Temp", 70, NULL, tempMEASURE_TASK_PRIORITY,
 			NULL);
@@ -193,12 +197,44 @@ void vAllowRotary(xTimerHandle pxTimer)
  * Tasks
  */
 
+void vTaskRotaryIT(void *pvParameters)
+{
+	const int8_t sToSend = 0;
+	NVIC_InitTypeDef NVIC_InitStruct;
+
+	for(;;)
+	{
+		xSemaphoreTake(xSemaphoreRotaryIT, portMAX_DELAY);
+
+		NVIC_InitStruct.NVIC_IRQChannel = EXTI0_IRQn;
+		NVIC_InitStruct.NVIC_IRQChannelCmd = DISABLE;
+		NVIC_InitStruct.NVIC_IRQChannelPreemptionPriority = 6;
+		NVIC_InitStruct.NVIC_IRQChannelSubPriority = 0;
+		NVIC_Init(&NVIC_InitStruct);
+
+		if(xSemaphoreTake(xSemaphoreSleep, 0))
+		{
+			/* Turn back the display */
+			DISP_SetOn();
+
+			/* Switch back to main screen */
+			vTaskResume(xTaskHandleMainScreen);
+		}
+		else
+		{
+			xQueueSend(xQueueMenu, &sToSend, 2);
+		}
+
+		xTimerReset(xTimerRotaryAllow, 2);
+	}
+}
+
 /* This task retrieves the value of the rotary switch and send it to the queue */
 void prvRotaryChkTask(void *pvParameters)
 {
 	portTickType xNextWakeTime;
 	signed short CurrentVal = 0;
-	uint8_t xValueHolder;
+	int8_t xValueHolder;
 
 	/* Initialize xNextWakeTime - this only needs to be done once. */
 	xNextWakeTime = xTaskGetTickCount();
@@ -217,16 +253,17 @@ void prvRotaryChkTask(void *pvParameters)
 		if(CurrentVal)
 		{
 			xValueHolder = CurrentVal;
-			xQueueSend( xQueueMenu, &xValueHolder, 0);
 			if(xSemaphoreTake(xSemaphoreSleep, 0) == pdTRUE)
 			{
-				/* Send back action to the queue, comment out if needed */
-				//xQueueSendToFront(xQueueMenu, &xReceivedValue, 0);
 				/* Turn back the display */
 				DISP_SetOn();
 
 				/* Switch back to main screen */
 				vTaskResume(xTaskHandleMainScreen);
+			}
+			else
+			{
+				xQueueSend( xQueueMenu, &xValueHolder, 0);
 			}
 		}
 	}
@@ -256,10 +293,10 @@ void vTaskMainScreen(void *pvParamters)
 		{
 			/* Update the time and date */
 			RTC_TimeToString(time_string, RTC_ShowSeconds_No);
-			for(i=0; i<50; i++)
+			for(i = 0; i < 50; i++)
 			{
-				DISP_BlockWrite(0,i,0x00);
-				DISP_BlockWrite(1,i,0x00);
+				DISP_BlockWrite(0, i, 0x00);
+				DISP_BlockWrite(1, i, 0x00);
 			}
 			DISP_2LineStringWrite(1, 0, time_string);
 			RTC_DateToString(time_string);
@@ -299,8 +336,8 @@ void vTaskMainScreen(void *pvParamters)
 			/* Get limit temperature, then update */
 			if(xSemaphoreTake(xMutexTempLimit, 10 * portTICK_RATE_MS))
 			{
-				prvfTempLimit = fTempLimit;
-				prvsTempLimit = sTempLimit;
+				prvfTempLimit = *pfTempLimit;
+				prvsTempLimit = *psTempLimit;
 
 				/* Give back the mutex */
 				xSemaphoreGive(xMutexTempLimit);
@@ -366,8 +403,8 @@ void vTaskMainScreen(void *pvParamters)
 				/* Get the current temperature limit, store in the local private variable */
 				if(xSemaphoreTake(xMutexTempLimit, 10 * portTICK_RATE_MS))
 				{
-					prvfTempLimit = fTempLimit;
-					prvsTempLimit = sTempLimit;
+					prvfTempLimit = *pfTempLimit;
+					prvsTempLimit = *psTempLimit;
 
 					/* Give back the mutex */
 					xSemaphoreGive(xMutexTempLimit);
@@ -390,8 +427,8 @@ void vTaskMainScreen(void *pvParamters)
 					/* Store the new limits */
 					if(xSemaphoreTake(xMutexTempLimit, 10 * portTICK_RATE_MS))
 					{
-						fTempLimit = prvfTempLimit;
-						sTempLimit = prvsTempLimit;
+						*pfTempLimit = prvfTempLimit;
+						*psTempLimit = prvsTempLimit;
 						xSemaphoreGive(xMutexTempLimit);
 					}
 				}
@@ -467,7 +504,7 @@ void vTaskMenuSelect(void *pvParamters)
 			if(sReceivedValue != 0)
 			{
 				/* Set the menu pointer to the new value */
-				sMenuPtr = prvLimit(sMenuPtr + sReceivedValue, MENU_MAX);
+				sMenuPtr = prvLimit(sMenuPtr + sReceivedValue, 0, MENU_MAX);
 
 			}
 			/* Push button received */
@@ -520,7 +557,9 @@ void vTaskSetTimeDate(void *pvParamters)
 	char strTime[15];
 	char strTemp[15];
 	uint8_t uDatePtr;
-	const uint8_t aLimits[6] = {
+	const uint8_t aMinLimits[6] = {
+			0, 1, 1, 0, 0, 0 };
+	const uint8_t aMaxLimits[6] = {
 			99, 12, 31, 23, 59, 59 };
 	uint8_t uColNext = 0, uColPrev = 0;
 	uint8_t uLineNext = 0, uLinePrev = 0;
@@ -566,7 +605,8 @@ void vTaskSetTimeDate(void *pvParamters)
 			if(sReceivedValue != 0)
 			{
 				/* Set the new value */
-				time[uDatePtr] = (uint8_t) prvLimit(time[uDatePtr] + sReceivedValue, aLimits[uDatePtr]);
+				time[uDatePtr] = (uint8_t) prvLimit(time[uDatePtr] + sReceivedValue,
+						aMinLimits[uDatePtr], aMaxLimits[uDatePtr]);
 
 				/* Fork in time and date */
 				if(uDatePtr < 3)
@@ -689,7 +729,7 @@ void vTaskSetBrightness(void *pvParamters)
 			/* Rotation received */
 			if(sReceivedValue != 0)
 			{
-				DISP_SetBacklight(prvLimit(DISP_GetBacklight() + sReceivedValue, DISP_MAX_DUTY));
+				DISP_SetBacklight(prvLimit(DISP_GetBacklight() + sReceivedValue, 0, DISP_MAX_DUTY));
 				uBrightness = DISP_GetBacklight();
 				for(i = 0; i < 8; i++)
 				{
@@ -839,11 +879,10 @@ void vTaskTurnOff(void *pvParameters)
 /*-----------------------------------------------------------*/
 void prvTempStoreTask(void *pvParameters)
 {
-	portTickType xNextWakeTime;
 	int32_t uCurrentTemp = 0;
 	uint8_t bIsHeatOn = 0, i;
 	int32_t uAvgTemp = 0;
-	uint8_t temp = 0;
+	int32_t prvTempLimit;
 
 	/* Take the memory protector mutex */
 	xSemaphoreTake(xMutexTempMemory, portMAX_DELAY);
@@ -873,13 +912,9 @@ void prvTempStoreTask(void *pvParameters)
 	DISP_Clear();
 	vTaskResume(xTaskHandleMainScreen);
 
-	/* Initialize xNextWakeTime - this only needs to be done once. */
-	//xNextWakeTime = xTaskGetTickCount();
-
 	EADC_ITCmd(ENABLE);
 	for(;;)
 	{
-		//vTaskDelayUntil(&xNextWakeTime, MEASURE_TEMP_FREQ);
 		xSemaphoreTake(xSemaphoreTempReady, portMAX_DELAY);
 
 		/* Get the current ADC result */
@@ -918,20 +953,26 @@ void prvTempStoreTask(void *pvParameters)
 				uAvgTemp /= 5;
 
 				/* Check if heating is  */
-				if(uAvgTemp < (sTempLimit - (bIsHeatOn ? 0 : HYSTERESIS)))
+				if(xSemaphoreTake(xMutexTempLimit, 5) == pdTRUE)
 				{
-					if(bIsHeatOn == 0)
+					prvTempLimit = *psTempLimit;
+					xSemaphoreGive(xMutexTempLimit);
+
+					if(uAvgTemp < (prvTempLimit - (bIsHeatOn ? 0 : HYSTERESIS)))
 					{
-						RELAY_Heat(RELAY_FanSpeed_OFF);
-						bIsHeatOn = 1;
+						if(bIsHeatOn == 0)
+						{
+							RELAY_Heat(RELAY_FanSpeed_OFF);
+							bIsHeatOn = 1;
+						}
 					}
-				}
-				else
-				{
-					if(bIsHeatOn == 1)
+					else
 					{
-						RELAY_OFF();
-						bIsHeatOn = 0;
+						if(bIsHeatOn == 1)
+						{
+							RELAY_OFF();
+							bIsHeatOn = 0;
+						}
 					}
 				}
 			}
@@ -1015,23 +1056,14 @@ void vTaskUSB(void *pvParameters)
  * @param	Limit: This value it the limit, it could be negative too
  * @retval	The limited value
  */
-int16_t prvLimit(int16_t Value, int16_t Limit)
+int16_t prvLimit(int16_t Value, int16_t Min, int16_t Max)
 {
-	if(Limit < 0)
-	{
-		if(Value > 0)
-			return 0;
-		else if(Value < Limit)
-			return Limit;
-	}
+	if(Value < Min)
+		return Min;
+	else if(Value > Max)
+		return Max;
 	else
-	{
-		if(Value < 0)
-			return 0;
-		else if(Value > Limit)
-			return Limit;
-	}
-	return Value;
+		return Value;
 }
 
 float prvLimitInterval(float Value, float Min, float Max)

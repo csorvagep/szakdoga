@@ -26,11 +26,11 @@ static uint8_t ColumnCounter[] =
 /* TODO 16 elemû fényerõ szint */
 static const uint8_t DutyList[8] = {4,5,9,17,28,45,66,100};
 
-static uint8_t BacklightDuty = 3;
+__IO uint8_t *pBacklightDuty;
 
 static void DISP_ByteWrite(uint8_t Byte, DISPDataType_TypeDef DISP_DataType, DISPCs_TypeDef DISP_CS);
 
-static uint8_t Duty = 17;
+static uint8_t Duty;
 
 /**
  * @brief	This function initializes the display backlight's GPIO pins and the timer for PWM
@@ -72,7 +72,7 @@ void Backlight_Init()
 
 	TIM_OCInitStruct.TIM_OCMode = TIM_OCMode_PWM2;
 	TIM_OCInitStruct.TIM_OutputState = TIM_OutputState_Enable;
-	TIM_OCInitStruct.TIM_Pulse = DutyList[BacklightDuty];
+	TIM_OCInitStruct.TIM_Pulse = DutyList[*pBacklightDuty];
 	TIM_OCInitStruct.TIM_OCPolarity = TIM_OCPolarity_Low;
 
 	TIM_OC2Init(TIM12, &TIM_OCInitStruct);
@@ -87,13 +87,17 @@ void Backlight_Init()
 	TIM_InitStruct.TIM_Prescaler = 1000;
 	TIM_TimeBaseInit(TIM3, &TIM_InitStruct);
 
+	TIM_ClearITPendingBit(TIM3, TIM_IT_Update);
 	TIM_ITConfig(TIM3, TIM_IT_Update, ENABLE);
+	TIM_Cmd(TIM3, DISABLE);
 
 	NVIC_InitStruct.NVIC_IRQChannel = TIM3_IRQn;
 	NVIC_InitStruct.NVIC_IRQChannelCmd = ENABLE;
 	NVIC_InitStruct.NVIC_IRQChannelPreemptionPriority = 4;
 	NVIC_InitStruct.NVIC_IRQChannelSubPriority = 0;
 	NVIC_Init(&NVIC_InitStruct);
+
+	Duty = DutyList[*pBacklightDuty];
 }
 
 /**
@@ -466,23 +470,23 @@ void DISP_2LineStringWrite(uint8_t Line, uint8_t Column, char * String)
 
 inline uint8_t DISP_GetBacklight(void)
 {
-	return BacklightDuty;
+	return *pBacklightDuty;
 }
 
 inline void DISP_SetBacklight(uint8_t Val)
 {
 	if(Val>DISP_MAX_DUTY)
-		BacklightDuty = DISP_MAX_DUTY;
+		*pBacklightDuty = DISP_MAX_DUTY;
 	else
-		BacklightDuty = Val;
+		*pBacklightDuty = Val;
 
-	TIM_SetCompare2(TIM12, DutyList[BacklightDuty]);
+	TIM_SetCompare2(TIM12, DutyList[*pBacklightDuty]);
 }
 
 /* TODO comment */
 void DISP_SetOff(void)
 {
-	Duty = DutyList[BacklightDuty];
+	Duty = DutyList[*pBacklightDuty];
 
 	/* Enable the fade off timer */
 	TIM_Cmd(TIM3, ENABLE);
@@ -496,7 +500,7 @@ void DISP_SetOn(void)
 	TIM_SelectOCxM(TIM12, TIM_Channel_2, TIM_OCMode_PWM2);
 	TIM_CCxCmd(TIM12, TIM_Channel_2, TIM_CCx_Enable);
 
-	TIM_SetCompare2(TIM12, DutyList[BacklightDuty]);
+	TIM_SetCompare2(TIM12, DutyList[*pBacklightDuty]);
 }
 
 void TIM3_IRQHandler(void)

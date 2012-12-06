@@ -319,7 +319,7 @@ void USBH_USR_EnumerationDone(void)
 {
 
 	/* Enumeration complete */
-	DISP_StringWrite(3, 0,(unsigned char *) MSG_DEV_ENUMERATED);
+	DISP_StringWrite(3, 0, MSG_DEV_ENUMERATED);
 
 //  LCD_SetTextColor(Green);
 //  LCD_DisplayStringLine( LCD_PIXEL_HEIGHT - 42, "To see the root content of the disk : " );
@@ -385,8 +385,6 @@ int USBH_USR_MSC_Application(void)
 	FRESULT res;
 	uint8_t writeTextBuff[] = "STM32 Connectivity line Host Demo application using FAT_FS   ";
 	uint16_t bytesWritten, bytesToWrite;
-	uint32_t bytes;
-	unsigned char tmp[32];
 
 	switch(USBH_USR_ApplicationState)
 	{
@@ -397,7 +395,7 @@ int USBH_USR_MSC_Application(void)
 		{
 			/* efs initialisation fails*/
 			DISP_Clear();
-			DISP_StringWrite(0, 0, (unsigned char *)"> Cannot initialize File System.");
+			DISP_StringWrite(0, 0, "> Cannot initialize File System.");
 			return (-1);
 		}
 //    LCD_UsrLog("> File System initialized.");

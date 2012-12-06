@@ -65,7 +65,7 @@
 						</toolChain>
 					</folderInfo>
 					<sourceEntries>
-						<entry flags="VALUE_WORKSPACE_PATH|RESOLVED" kind="sourcePath" name=""/>
+						<entry excluding="Libraries/STM32F2xx_StdPeriph_Driver/src/stm32f2xx_wwdg.c|Libraries/STM32F2xx_StdPeriph_Driver/src/stm32f2xx_usart.c|Libraries/STM32F2xx_StdPeriph_Driver/src/stm32f2xx_sdio.c|Libraries/STM32F2xx_StdPeriph_Driver/src/stm32f2xx_rng.c|Libraries/STM32F2xx_StdPeriph_Driver/src/stm32f2xx_iwdg.c|Libraries/STM32F2xx_StdPeriph_Driver/src/stm32f2xx_i2c.c|Libraries/STM32F2xx_StdPeriph_Driver/src/stm32f2xx_hash.c|Libraries/STM32F2xx_StdPeriph_Driver/src/stm32f2xx_hash_sha1.c|Libraries/STM32F2xx_StdPeriph_Driver/src/stm32f2xx_hash_md5.c|Libraries/STM32F2xx_StdPeriph_Driver/src/stm32f2xx_fsmc.c|Libraries/STM32F2xx_StdPeriph_Driver/src/stm32f2xx_dcmi.c|Libraries/STM32F2xx_StdPeriph_Driver/src/stm32f2xx_dbgmcu.c|Libraries/STM32F2xx_StdPeriph_Driver/src/stm32f2xx_dac.c|Libraries/STM32F2xx_StdPeriph_Driver/src/stm32f2xx_cryp.c|Libraries/STM32F2xx_StdPeriph_Driver/src/stm32f2xx_cryp_tdes.c|Libraries/STM32F2xx_StdPeriph_Driver/src/stm32f2xx_cryp_des.c|Libraries/STM32F2xx_StdPeriph_Driver/src/stm32f2xx_cryp_aes.c|Libraries/STM32F2xx_StdPeriph_Driver/src/stm32f2xx_crc.c|Libraries/STM32F2xx_StdPeriph_Driver/src/stm32f2xx_can.c|Libraries/STM32F2xx_StdPeriph_Driver/src/stm32f2xx_adc.c" flags="VALUE_WORKSPACE_PATH|RESOLVED" kind="sourcePath" name=""/>
 					</sourceEntries>
 				</configuration>
 			</storageModule>
@@ -115,7 +115,7 @@
 						</toolChain>
 					</folderInfo>
 					<sourceEntries>
-						<entry flags="VALUE_WORKSPACE_PATH|RESOLVED" kind="sourcePath" name=""/>
+						<entry excluding="Libraries/STM32F2xx_StdPeriph_Driver/src/stm32f2xx_wwdg.c|Libraries/STM32F2xx_StdPeriph_Driver/src/stm32f2xx_usart.c|Libraries/STM32F2xx_StdPeriph_Driver/src/stm32f2xx_sdio.c|Libraries/STM32F2xx_StdPeriph_Driver/src/stm32f2xx_rng.c|Libraries/STM32F2xx_StdPeriph_Driver/src/stm32f2xx_iwdg.c|Libraries/STM32F2xx_StdPeriph_Driver/src/stm32f2xx_i2c.c|Libraries/STM32F2xx_StdPeriph_Driver/src/stm32f2xx_hash.c|Libraries/STM32F2xx_StdPeriph_Driver/src/stm32f2xx_hash_sha1.c|Libraries/STM32F2xx_StdPeriph_Driver/src/stm32f2xx_hash_md5.c|Libraries/STM32F2xx_StdPeriph_Driver/src/stm32f2xx_fsmc.c|Libraries/STM32F2xx_StdPeriph_Driver/src/stm32f2xx_dcmi.c|Libraries/STM32F2xx_StdPeriph_Driver/src/stm32f2xx_dbgmcu.c|Libraries/STM32F2xx_StdPeriph_Driver/src/stm32f2xx_dac.c|Libraries/STM32F2xx_StdPeriph_Driver/src/stm32f2xx_cryp.c|Libraries/STM32F2xx_StdPeriph_Driver/src/stm32f2xx_cryp_tdes.c|Libraries/STM32F2xx_StdPeriph_Driver/src/stm32f2xx_cryp_des.c|Libraries/STM32F2xx_StdPeriph_Driver/src/stm32f2xx_cryp_aes.c|Libraries/STM32F2xx_StdPeriph_Driver/src/stm32f2xx_crc.c|Libraries/STM32F2xx_StdPeriph_Driver/src/stm32f2xx_can.c|Libraries/STM32F2xx_StdPeriph_Driver/src/stm32f2xx_adc.c" flags="VALUE_WORKSPACE_PATH|RESOLVED" kind="sourcePath" name=""/>
 					</sourceEntries>
 				</configuration>
 			</storageModule>

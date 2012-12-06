@@ -16,9 +16,14 @@ RTC_InitTypeDef RTC_InitStructure;
 RTC_DateTypeDef RTC_DateStructure;
 __IO uint32_t AsynchPrediv = 0, SynchPrediv = 0;
 
+extern __IO int32_t *psTempLimit;
+extern __IO float *pfTempLimit;
+extern __IO uint8_t * pBacklightDuty;
+
 void RTCInit(void)
 {
-	//RTC_Config();
+	uint32_t i = 0;
+
 	if(RTC_ReadBackupRegister(RTC_BKP_DR0 ) != 0x32F2)
 	{
 		/* RTC configuration  */
@@ -52,6 +57,18 @@ void RTCInit(void)
 		{
 			RTC_WriteBackupRegister(RTC_BKP_DR0, 0x32F2);
 		}
+
+		/* Store initial data in the backup SRAM */
+		RCC_AHB1PeriphClockCmd(RCC_AHB1Periph_BKPSRAM, ENABLE);
+		*(__IO int32_t *) (BKPSRAM_BASE + BKP_TEMP_LIMIT1_OFFSET) = 317005;
+		*(__IO float *) (BKPSRAM_BASE + BKP_TEMP_LIMIT2_OFFSET) = 19.0f;
+		*(__IO uint8_t *)(BKPSRAM_BASE + BKP_BACKLIGHT_OFFSET) = 3;
+		PWR_BackupRegulatorCmd(ENABLE);
+		/* Wait until the Backup SRAM low power Regulator is ready */
+		while(PWR_GetFlagStatus(PWR_FLAG_BRR ) == RESET)
+		{
+		}
+
 	}
 	else
 	{
@@ -63,7 +80,12 @@ void RTCInit(void)
 
 		/* Wait for RTC APB registers synchronisation */
 		RTC_WaitForSynchro();
+
+		RCC_AHB1PeriphClockCmd(RCC_AHB1Periph_BKPSRAM, ENABLE);
 	}
+	pfTempLimit = (__IO float *)(BKPSRAM_BASE + BKP_TEMP_LIMIT2_OFFSET);
+	psTempLimit = (__IO int32_t *)(BKPSRAM_BASE + BKP_TEMP_LIMIT1_OFFSET);
+	pBacklightDuty = (__IO uint8_t *)(BKPSRAM_BASE + BKP_BACKLIGHT_OFFSET);
 }
 
 void RTC_Config(void)
@@ -99,24 +121,24 @@ void RTC_TimeToString(char* String, RTCShowSeconds_TypeDef Show)
 	static uint8_t bLeadZero = 0;
 	bLeadZero = 0;
 	RTC_GetTime(RTC_Format_BCD, &RTC_TimeStructure);
-	if((RTC_TimeStructure.RTC_Hours >> 4) == 0 && !Show )
+	if((RTC_TimeStructure.RTC_Hours >> 4) == 0 && !Show)
 		bLeadZero = 1;
 	if(!bLeadZero || Show)
 		String[0] = (char) ((RTC_TimeStructure.RTC_Hours >> 4) + '0');
-	String[1-bLeadZero] = (char) ((RTC_TimeStructure.RTC_Hours & 0x0f) + '0');
-	String[2-bLeadZero] = ':';
-	String[3-bLeadZero] = (char) ((RTC_TimeStructure.RTC_Minutes >> 4) + '0');
-	String[4-bLeadZero] = (char) ((RTC_TimeStructure.RTC_Minutes & 0x0f) + '0');
+	String[1 - bLeadZero] = (char) ((RTC_TimeStructure.RTC_Hours & 0x0f) + '0');
+	String[2 - bLeadZero] = ':';
+	String[3 - bLeadZero] = (char) ((RTC_TimeStructure.RTC_Minutes >> 4) + '0');
+	String[4 - bLeadZero] = (char) ((RTC_TimeStructure.RTC_Minutes & 0x0f) + '0');
 	if(Show)
 	{
-		String[5-bLeadZero] = ':';
-		String[6-bLeadZero] = (char) ((RTC_TimeStructure.RTC_Seconds >> 4) + '0');
-		String[7-bLeadZero] = (char) ((RTC_TimeStructure.RTC_Seconds & 0x0f) + '0');
-		String[8-bLeadZero] = '\0';
+		String[5 - bLeadZero] = ':';
+		String[6 - bLeadZero] = (char) ((RTC_TimeStructure.RTC_Seconds >> 4) + '0');
+		String[7 - bLeadZero] = (char) ((RTC_TimeStructure.RTC_Seconds & 0x0f) + '0');
+		String[8 - bLeadZero] = '\0';
 	}
 	else
 	{
-		String[5-bLeadZero] = '\0';
+		String[5 - bLeadZero] = '\0';
 	}
 }
 

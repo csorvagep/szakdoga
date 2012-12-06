@@ -13,6 +13,10 @@ typedef enum {
 	RTC_ShowSeconds_No = 0x00
 }RTCShowSeconds_TypeDef;
 
+#define BKP_TEMP_LIMIT1_OFFSET	0
+#define BKP_TEMP_LIMIT2_OFFSET	4
+#define BKP_BACKLIGHT_OFFSET		8
+
 void RTCInit(void);
 void RTC_Config(void);
 void RTC_TimeToString(char* String, RTCShowSeconds_TypeDef Show);

@@ -8,8 +8,7 @@
 #include "rotary.h"
 #include "stm32f2xx.h"
 #include "FreeRTOS.h"
-#include "queue.h"
-#include "timers.h"
+#include "semphr.h"
 
 static int16_t LastValue = 0;
 int16_t DeltaValue = 0;
@@ -97,26 +96,14 @@ void TIM2_IRQHandler(void)
 	}
 }
 
-extern xQueueHandle xQueueMenu;
-extern xTimerHandle xTimerRotaryAllow;
+extern xSemaphoreHandle xSemaphoreRotaryIT;
 void EXTI0_IRQHandler(void)
 {
 	static portBASE_TYPE xHigherPriorityTaskWoken;
-	static signed short sToSend = 0;
-	NVIC_InitTypeDef NVIC_InitStruct;
 
 	if(EXTI_GetITStatus(EXTI_Line0 ))
 	{
-		xQueueSendToBackFromISR(xQueueMenu, &sToSend,
-				&xHigherPriorityTaskWoken);
-
-		xTimerResetFromISR( xTimerRotaryAllow, &xHigherPriorityTaskWoken );
-
-		NVIC_InitStruct.NVIC_IRQChannel = EXTI0_IRQn;
-		NVIC_InitStruct.NVIC_IRQChannelCmd = DISABLE;
-		NVIC_InitStruct.NVIC_IRQChannelPreemptionPriority = 6;
-		NVIC_InitStruct.NVIC_IRQChannelSubPriority = 0;
-		NVIC_Init(&NVIC_InitStruct);
+		xSemaphoreGiveFromISR(xSemaphoreRotaryIT, &xHigherPriorityTaskWoken);
 
 		EXTI_ClearFlag(EXTI_Line0 );
 
