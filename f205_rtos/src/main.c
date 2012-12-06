@@ -54,12 +54,13 @@ xSemaphoreHandle xMutexBattVolt = NULL;
 /* Semaphore Handles */
 xSemaphoreHandle xSemaphoreTempReady = NULL;
 xSemaphoreHandle xSemaphoreRFInt = NULL;
+xSemaphoreHandle xSemaphoreSleep = NULL;
 
+/* Task Handles */
 xTaskHandle xTaskHandleMainScreen = NULL;
 xTaskHandle xTaskHandleMenuSelect = NULL;
 xTaskHandle xTaskHandleSetTimeDate = NULL;
 xTaskHandle xTaskHandleSetBrightness = NULL;
-xTaskHandle xTaskHandleSleep = NULL;
 xTaskHandle xTaskHandleSetRFModule = NULL;
 
 xTaskHandle xTaskHandleTurnOff = NULL;
@@ -74,7 +75,7 @@ xTaskHandle * aMenuTaskPtrs[MENU_MAX + 1] = {
 
 
 xTaskHandle * aDisplayTasks[DISP_TASKS_COUNT] = {&xTaskHandleSetTimeDate, &xTaskHandleMainScreen, &xTaskHandleSetBrightness,
-		&xTaskHandleSetRFModule, &xTaskHandleMenuSelect, &xTaskHandleSleep};
+		&xTaskHandleSetRFModule, &xTaskHandleMenuSelect};
 
 /* Global variables for temperature measuring */
 int32_t *psStartOfBuffer = NULL;
@@ -122,6 +123,9 @@ int main(void)
 	/* Create Semaphores */
 	vSemaphoreCreateBinary(xSemaphoreTempReady);
 	vSemaphoreCreateBinary(xSemaphoreRFInt);
+	vSemaphoreCreateBinary(xSemaphoreSleep);
+
+	xSemaphoreTake(xSemaphoreSleep, 0);
 
 	/* Create Tasks */
 	xTaskCreate( vTaskMainScreen, ( signed char * ) "MainScreen", 100, NULL, MAIN_SCREEN_PRIORITY,
@@ -132,15 +136,13 @@ int main(void)
 			&xTaskHandleSetTimeDate);
 	xTaskCreate( vTaskSetBrightness, ( signed char * ) "SetBrightness", 70, NULL,
 			SET_BRIGHTNESS_PRIORITY, &xTaskHandleSetBrightness);
-	xTaskCreate( vTaskSleep, ( signed char * ) "Sleep", 70, NULL, SLEEP_TASK_PRIORITY,
-			&xTaskHandleSleep);
 	xTaskCreate( vTaskSetRFModule, ( signed char * ) "SetRF", 70, NULL, RFMODULE_PRIORITY,
 			&xTaskHandleSetRFModule);
 	xTaskCreate( vTaskTurnOff, ( signed char * ) "Off", 20, NULL, TURNOFF_PRIORITY,
 			&xTaskHandleTurnOff);
 
-	xTaskCreate( vTaskUSB, ( signed char * ) "USB", 300, NULL, USB_PRIORITY,
-			&xTaskHandleUSB);
+//	xTaskCreate( vTaskUSB, ( signed char * ) "USB", 300, NULL, USB_PRIORITY,
+//			&xTaskHandleUSB);
 
 	xTaskCreate( prvRotaryChkTask, ( signed char * )"Rotary", 70, NULL, rotaryQUEUE_TASK_PRIORITY,
 			NULL);
@@ -158,7 +160,6 @@ int main(void)
 	vTaskSuspend(xTaskHandleMenuSelect);
 	vTaskSuspend(xTaskHandleSetTimeDate);
 	vTaskSuspend(xTaskHandleSetBrightness);
-	vTaskSuspend(xTaskHandleSleep);
 	vTaskSuspend(xTaskHandleSetRFModule);
 	vTaskSuspend(xTaskHandleTurnOff);
 
@@ -193,7 +194,7 @@ void vAllowRotary(xTimerHandle pxTimer)
  */
 
 /* This task retrieves the value of the rotary switch and send it to the queue */
-static void prvRotaryChkTask(void *pvParameters)
+void prvRotaryChkTask(void *pvParameters)
 {
 	portTickType xNextWakeTime;
 	signed short CurrentVal = 0;
@@ -217,12 +218,22 @@ static void prvRotaryChkTask(void *pvParameters)
 		{
 			xValueHolder = CurrentVal;
 			xQueueSend( xQueueMenu, &xValueHolder, 0);
+			if(xSemaphoreTake(xSemaphoreSleep, 0) == pdTRUE)
+			{
+				/* Send back action to the queue, comment out if needed */
+				//xQueueSendToFront(xQueueMenu, &xReceivedValue, 0);
+				/* Turn back the display */
+				DISP_SetOn();
+
+				/* Switch back to main screen */
+				vTaskResume(xTaskHandleMainScreen);
+			}
 		}
 	}
 }
 
 /* This task displays the main screen, sets the temperature limit */
-static void vTaskMainScreen(void *pvParamters)
+void vTaskMainScreen(void *pvParamters)
 {
 	int8_t sReceivedValue;
 	uint16_t uIdleCntr = 0;
@@ -402,7 +413,8 @@ static void vTaskMainScreen(void *pvParamters)
 				uIdleCntr = 0;
 				bUpdateNeed = 1;
 
-				vTaskResume(xTaskHandleSleep);
+				//vTaskResume(xTaskHandleSleep);
+				xSemaphoreGive(xSemaphoreSleep);
 				vTaskSuspend(NULL );
 			}
 		}
@@ -410,7 +422,7 @@ static void vTaskMainScreen(void *pvParamters)
 }
 
 /* This task displays the main menu */
-static void vTaskMenuSelect(void *pvParamters)
+void vTaskMenuSelect(void *pvParamters)
 {
 	/* Declare local variables */
 	int8_t sReceivedValue;
@@ -495,7 +507,7 @@ static void vTaskMenuSelect(void *pvParamters)
 } /* Task end */
 
 /* This task sets the date and time */
-static void vTaskSetTimeDate(void *pvParamters)
+void vTaskSetTimeDate(void *pvParamters)
 {
 	/* Local variables */
 	int8_t sReceivedValue;
@@ -649,7 +661,7 @@ static void vTaskSetTimeDate(void *pvParamters)
 }
 
 /* This task sets the display's brightness */
-static void vTaskSetBrightness(void *pvParamters)
+void vTaskSetBrightness(void *pvParamters)
 {
 	/* Local variables */
 	int8_t sReceivedValue;
@@ -714,31 +726,8 @@ static void vTaskSetBrightness(void *pvParamters)
 	}
 }
 
-/* This task goes to sleep mode */
-static void vTaskSleep(void *pvParamters)
-{
-	int8_t sReceivedValue;
-
-	/* Main loop for this task */
-	for(;;)
-	{
-		/* Block until rotary action */
-		if(xQueueReceive(xQueueMenu, &sReceivedValue, portMAX_DELAY))
-		{
-			/* Send back action to the queue, comment out if needed */
-			//xQueueSendToFront(xQueueMenu, &xReceivedValue, 0);
-			/* Turn back the display */
-			DISP_SetOn();
-
-			/* Switch back to main screen */
-			vTaskResume(xTaskHandleMainScreen);
-			vTaskSuspend(NULL );
-		}
-	}
-}
-
 /* This task sets the rf module */
-static void vTaskSetRFModule(void *pvParamters)
+void vTaskSetRFModule(void *pvParamters)
 {
 	/* Local variables */
 	int8_t sReceivedValue;
@@ -841,19 +830,20 @@ static void vTaskSetRFModule(void *pvParamters)
 	}
 }
 
-static void vTaskTurnOff(void *pvParameters)
+void vTaskTurnOff(void *pvParameters)
 {
 	PWR_WakeUpPinCmd(ENABLE);
 	PWR_EnterSTANDBYMode();
 }
 
 /*-----------------------------------------------------------*/
-static void prvTempStoreTask(void *pvParameters)
+void prvTempStoreTask(void *pvParameters)
 {
 	portTickType xNextWakeTime;
 	int32_t uCurrentTemp = 0;
 	uint8_t bIsHeatOn = 0, i;
 	int32_t uAvgTemp = 0;
+	uint8_t temp = 0;
 
 	/* Take the memory protector mutex */
 	xSemaphoreTake(xMutexTempMemory, portMAX_DELAY);
@@ -884,11 +874,13 @@ static void prvTempStoreTask(void *pvParameters)
 	vTaskResume(xTaskHandleMainScreen);
 
 	/* Initialize xNextWakeTime - this only needs to be done once. */
-	xNextWakeTime = xTaskGetTickCount();
+	//xNextWakeTime = xTaskGetTickCount();
 
+	EADC_ITCmd(ENABLE);
 	for(;;)
 	{
-		vTaskDelayUntil(&xNextWakeTime, MEASURE_TEMP_FREQ);
+		//vTaskDelayUntil(&xNextWakeTime, MEASURE_TEMP_FREQ);
+		xSemaphoreTake(xSemaphoreTempReady, portMAX_DELAY);
 
 		/* Get the current ADC result */
 		if(xSemaphoreTake(xMutexSPIUse, (portTickType) 20))
@@ -947,7 +939,7 @@ static void prvTempStoreTask(void *pvParameters)
 	}
 }
 
-static void vTaskRFMRead(void *pvParameters)
+void vTaskRFMRead(void *pvParameters)
 {
 	uint8_t aReceiveBuff[32];
 	uint8_t uPipe;
@@ -1002,7 +994,7 @@ static void vTaskRFMRead(void *pvParameters)
 	}
 }
 
-static void vTaskUSB(void *pvParameters)
+void vTaskUSB(void *pvParameters)
 {
 	portTickType xNextWakeTime;
 
@@ -1023,7 +1015,7 @@ static void vTaskUSB(void *pvParameters)
  * @param	Limit: This value it the limit, it could be negative too
  * @retval	The limited value
  */
-static int16_t prvLimit(int16_t Value, int16_t Limit)
+int16_t prvLimit(int16_t Value, int16_t Limit)
 {
 	if(Limit < 0)
 	{
@@ -1042,7 +1034,7 @@ static int16_t prvLimit(int16_t Value, int16_t Limit)
 	return Value;
 }
 
-static float prvLimitInterval(float Value, float Min, float Max)
+float prvLimitInterval(float Value, float Min, float Max)
 {
 	if(Value < Min)
 		return Min;
@@ -1051,8 +1043,6 @@ static float prvLimitInterval(float Value, float Min, float Max)
 	else
 		return Value;
 }
-
-/* TODO float to string */
 
 /*-----------------------------------------------------------*/
 

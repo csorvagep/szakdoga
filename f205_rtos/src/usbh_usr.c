@@ -104,22 +104,22 @@ USBH_Usr_cb_TypeDef USR_cb = {
  * @{
  */
 /*--------------- LCD Messages ---------------*/
-const uint8_t MSG_HOST_INIT[] = "> Host Library Initialized";
-const uint8_t MSG_DEV_ATTACHED[] = "Dev Att.";
-const uint8_t MSG_DEV_DISCONNECTED[] = "> Device Disconnected";
-const uint8_t MSG_DEV_ENUMERATED[] = "Enum";
-const uint8_t MSG_DEV_HIGHSPEED[] = "Hspeed device";
-const uint8_t MSG_DEV_FULLSPEED[] = "Fspeed device";
-const uint8_t MSG_DEV_LOWSPEED[] = "Lspeed device";
-const uint8_t MSG_DEV_ERROR[] = "> Device fault ";
+const char MSG_HOST_INIT[] = "> Host Library Initialized";
+const char MSG_DEV_ATTACHED[] = "Dev Att.";
+const char MSG_DEV_DISCONNECTED[] = "> Device Disconnected";
+const char MSG_DEV_ENUMERATED[] = "Enum";
+const char MSG_DEV_HIGHSPEED[] = "Hspeed device";
+const char MSG_DEV_FULLSPEED[] = "Fspeed device";
+const char MSG_DEV_LOWSPEED[] = "Lspeed device";
+const char MSG_DEV_ERROR[] = "> Device fault ";
 
-const uint8_t MSG_MSC_CLASS[] = "MSC";
-const uint8_t MSG_HID_CLASS[] = "HID";
-const uint8_t MSG_DISK_SIZE[] = "> Size of the disk in MBytes: ";
-const uint8_t MSG_LUN[] = "> LUN Available in the device:";
-const uint8_t MSG_ROOT_CONT[] = "> Exploring disk flash ...";
-const uint8_t MSG_WR_PROTECT[] = "> The disk is write protected";
-const uint8_t MSG_UNREC_ERROR[] = "> UNRECOVERED ERROR STATE";
+const char MSG_MSC_CLASS[] = "MSC";
+const char MSG_HID_CLASS[] = "HID";
+const char MSG_DISK_SIZE[] = "> Size of the disk in MBytes: ";
+const char MSG_LUN[] = "> LUN Available in the device:";
+const char MSG_ROOT_CONT[] = "> Exploring disk flash ...";
+const char MSG_WR_PROTECT[] = "> The disk is write protected";
+const char MSG_UNREC_ERROR[] = "> UNRECOVERED ERROR STATE";
 
 /**
  * @}
@@ -129,10 +129,6 @@ const uint8_t MSG_UNREC_ERROR[] = "> UNRECOVERED ERROR STATE";
  * @{
  */
 static uint8_t Explore_Disk(char* path, uint8_t recu_level);
-static uint8_t Image_Browser(char* path);
-static void Show_Image(void);
-static void Toggle_Leds(void);
-
 static void WriteOutFile(void);
 /**
  * @}

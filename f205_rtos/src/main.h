@@ -52,7 +52,7 @@
 #define MENU_EXIT_COUNTER					( 15 )
 #define DISPLAY_OFF_TIME					( 30 )
 
-#define DISP_TASKS_COUNT 6
+#define DISP_TASKS_COUNT 5
 
 #define HYSTERESIS							0x22A // Kb. 0,5 fok
 #define TEMP_ERROR_DIFFERENCE				5538 // Kb. 5 fok
@@ -63,25 +63,24 @@
 /*-----------------------------------------------------------*/
 
 /* Tasks */
-static void prvRotaryChkTask(void *pvParameters);
-static void prvTempStoreTask(void *pvParameters);
+void prvRotaryChkTask(void *pvParameters);
+void prvTempStoreTask(void *pvParameters);
 
-static void vTaskMainScreen(void *pvParameters);
-static void vTaskMenuSelect(void *pvParameters);
-static void vTaskSetTimeDate(void *pvParameters);
-static void vTaskSetBrightness(void *pvParameters);
-static void vTaskSleep(void *pvParameters);
-static void vTaskSetRFModule(void *pvParameters);
-static void vTaskTurnOff(void *pvParameters);
+void vTaskMainScreen(void *pvParameters);
+void vTaskMenuSelect(void *pvParameters);
+void vTaskSetTimeDate(void *pvParameters);
+void vTaskSetBrightness(void *pvParameters);
+void vTaskSetRFModule(void *pvParameters);
+void vTaskTurnOff(void *pvParameters);
 
-static void vTaskUSB(void *pvParameters);
+void vTaskUSB(void *pvParameters);
 
-static void vTaskRFMRead(void *pvParameters);
+void vTaskRFMRead(void *pvParameters);
 
 /* Timer Callback functions */
-static void vAllowRotary(xTimerHandle pxTimer);
+void vAllowRotary(xTimerHandle pxTimer);
 
 /* Other functions */
-static int16_t prvLimit(int16_t Value, int16_t Limit);
-static float prvLimitInterval(float Value, float Min, float Max);
+int16_t prvLimit(int16_t Value, int16_t Limit);
+float prvLimitInterval(float Value, float Min, float Max);
 #endif /* MAIN_H_ */

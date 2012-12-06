@@ -69,14 +69,14 @@ void EADC_Init(void)
 	SYSCFG_EXTILineConfig(EXTI_PortSourceGPIOC, EXTI_PinSource8);
 
 	EXTI_InitStruct.EXTI_Line = EXTI_Line8;
-	EXTI_InitStruct.EXTI_LineCmd = ENABLE;
+	EXTI_InitStruct.EXTI_LineCmd = DISABLE;
 	EXTI_InitStruct.EXTI_Mode = EXTI_Mode_Interrupt;
 	EXTI_InitStruct.EXTI_Trigger = EXTI_Trigger_Falling;
 	EXTI_Init(&EXTI_InitStruct);
 
 	NVIC_InitStruct.NVIC_IRQChannel = EXTI9_5_IRQn;
-	NVIC_InitStruct.NVIC_IRQChannelCmd = DISABLE;
-	NVIC_InitStruct.NVIC_IRQChannelPreemptionPriority = 10;
+	NVIC_InitStruct.NVIC_IRQChannelCmd = ENABLE;
+	NVIC_InitStruct.NVIC_IRQChannelPreemptionPriority = 6;
 	NVIC_InitStruct.NVIC_IRQChannelSubPriority = 0;
 	NVIC_Init(&NVIC_InitStruct);
 
@@ -104,7 +104,6 @@ void EADC_Init(void)
 int32_t EADC_GetTemperature(void)
 {
 	uint8_t ret[3];
-	uint8_t i;
 
 	/* Wait to transmit the latest byte */
 	while(SPI_I2S_GetFlagStatus(SPI3, SPI_I2S_FLAG_TXE ) == RESET)
@@ -113,24 +112,9 @@ int32_t EADC_GetTemperature(void)
 	EADC_NSS_ON();
 
 	/* Set sleep mode then wake up to do a single measure */
-	SPI_I2S_SendData(SPI3, EADC_COMMAND_WAKEUP);
-	while(RESET == SPI_I2S_GetFlagStatus(SPI3, SPI_I2S_FLAG_RXNE ))
+	SPI_I2S_SendData(SPI3, EADC_COMMAND_NOP);
+	while(RESET == SPI_I2S_GetFlagStatus(SPI3, SPI_I2S_FLAG_TXE ))
 		;
-	SPI_I2S_SendData(SPI3, EADC_COMMAND_SLEEP);
-	while(RESET == SPI_I2S_GetFlagStatus(SPI3, SPI_I2S_FLAG_RXNE ))
-		;
-
-	EADC_NSS_OFF();
-
-	/* Wait to do the wake up */
-//	for(i = 15; i; i--)
-//		;
-
-	/* Wait until the next conversation is ready (falling edge) */
-	while(!GPIO_ReadInputDataBit(GPIOC, GPIO_Pin_8 ))
-		;
-
-	EADC_NSS_ON();
 
 	/* Send read data command then send NOPs to read the conversation result */
 	SPI_I2S_SendData(SPI3, EADC_COMMAND_RDATA);
@@ -161,7 +145,6 @@ int32_t EADC_GetTemperature(void)
 void EADC_SetSPI(void)
 {
 	SPI_InitTypeDef SPI_InitStruct;
-	uint32_t i;
 
 	SPI_StructInit(&SPI_InitStruct);
 	SPI_InitStruct.SPI_BaudRatePrescaler = SPI_BaudRatePrescaler_256;
@@ -173,13 +156,26 @@ void EADC_SetSPI(void)
 	SPI_Init(SPI3, &SPI_InitStruct);
 }
 
+void EADC_ITCmd(FunctionalState NewState)
+{
+	EXTI_InitTypeDef EXTI_InitStruct;
+
+	EXTI_InitStruct.EXTI_Line = EXTI_Line8;
+	EXTI_InitStruct.EXTI_LineCmd = NewState;
+	EXTI_InitStruct.EXTI_Mode = EXTI_Mode_Interrupt;
+	EXTI_InitStruct.EXTI_Trigger = EXTI_Trigger_Falling;
+	EXTI_Init(&EXTI_InitStruct);
+}
+
+extern xSemaphoreHandle xSemaphoreTempReady;
 void EXTI9_5_IRQHandler(void)
 {
-	static uint32_t tick = 0;
+	static portBASE_TYPE xHigherPriorityTaskWoken;
 	if(EXTI_GetFlagStatus(EXTI_Line8))
 	{
-		tick = xTaskGetTickCountFromISR();
+		xSemaphoreGiveFromISR(xSemaphoreTempReady, &xHigherPriorityTaskWoken);
 		EXTI_ClearITPendingBit(EXTI_Line8);
+		portEND_SWITCHING_ISR(xHigherPriorityTaskWoken);
 	}
 }
 

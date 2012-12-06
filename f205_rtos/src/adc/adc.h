@@ -10,6 +10,7 @@
 
 #include "stm32f2xx.h"
 #include "FreeRTOS.h"
+#include "semphr.h"
 
 /* ADS1246 Register Addresses */
 typedef enum
@@ -62,6 +63,7 @@ typedef enum
 void EADC_Init(void);
 int32_t EADC_GetTemperature(void);
 void EADC_SetSPI(void);
+void EADC_ITCmd(FunctionalState NewState);
 
 
 #endif /* EADC_H_ */
