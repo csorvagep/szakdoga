@@ -160,6 +160,8 @@ void EADC_ITCmd(FunctionalState NewState)
 {
 	EXTI_InitTypeDef EXTI_InitStruct;
 
+	EXTI_ClearITPendingBit(EXTI_Line8);
+
 	EXTI_InitStruct.EXTI_Line = EXTI_Line8;
 	EXTI_InitStruct.EXTI_LineCmd = NewState;
 	EXTI_InitStruct.EXTI_Mode = EXTI_Mode_Interrupt;

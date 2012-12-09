@@ -32,28 +32,22 @@
 #define tempMEASURE_TASK_PRIORITY		( tskIDLE_PRIORITY + 4 )
 #define RFM_TASK_PRIORITY					( tskIDLE_PRIORITY + 1 )
 
-#define MAIN_SCREEN_PRIORITY				( tskIDLE_PRIORITY + 2 )
-#define MENU_SELECT_PRIORITY				( tskIDLE_PRIORITY + 2 )
-#define SET_TIMEDATE_PRIORITY				( tskIDLE_PRIORITY + 2 )
-#define SET_BRIGHTNESS_PRIORITY			( tskIDLE_PRIORITY + 2 )
-#define SLEEP_TASK_PRIORITY				( tskIDLE_PRIORITY + 2 )
-#define RFMODULE_PRIORITY					( tskIDLE_PRIORITY + 2 )
-#define TURNOFF_PRIORITY					( tskIDLE_PRIORITY + 2 )
+#define DISPLAY_HANDLE_PRIORITY			( tskIDLE_PRIORITY + 2 )
 
 #define USB_PRIORITY							( tskIDLE_PRIORITY + 3 )
 
 #define ROTARY_CHK_FREQUENCY				( 100 / portTICK_RATE_MS )
 #define ROTARY_PB_DENY						( 200 / portTICK_RATE_MS )
-#define MENU_UPDATE_FREQUENCY				( 3000 / portTICK_RATE_MS )
+#define MENU_UPDATE_FREQUENCY				( 2000 / portTICK_RATE_MS )
 
 #define RFM_READ_FREQ						( 1000 / portTICK_RATE_MS )
 
 #define MENU_EXIT_COUNTER					( 15 )
 #define DISPLAY_OFF_TIME					( (30 * 1000) / (MENU_UPDATE_FREQUENCY * portTICK_RATE_MS) )
 
-#define DISP_TASKS_COUNT 5
+#define DISP_TASKS_COUNT 6
 
-#define HYSTERESIS							0x22A // Kb. 0,5 fok
+#define HYSTERESIS							0x115//0x22A // Kb. 0,5 fok
 #define TEMP_ERROR_DIFFERENCE				15000//5538 // Kb. 5 fok
 #define menuQUEUE_LENGTH					( 10 )
 #define SIZE_OF_BUFFER						( 128 )
@@ -70,6 +64,7 @@ void vTaskSetTimeDate(void *pvParameters);
 void vTaskSetBrightness(void *pvParameters);
 void vTaskSetRFModule(void *pvParameters);
 void vTaskTurnOff(void *pvParameters);
+void vTaskSetupProgram(void *pvParameters);
 
 void vTaskUSB(void *pvParameters);
 

@@ -63,6 +63,7 @@ xTaskHandle xTaskHandleMenuSelect = NULL;
 xTaskHandle xTaskHandleSetTimeDate = NULL;
 xTaskHandle xTaskHandleSetBrightness = NULL;
 xTaskHandle xTaskHandleSetRFModule = NULL;
+xTaskHandle xTaskHandleSetupProgram = NULL;
 
 xTaskHandle xTaskHandleTurnOff = NULL;
 
@@ -72,11 +73,11 @@ xTaskHandle xTaskHandleUSB = NULL;
 
 xTaskHandle * aMenuTaskPtrs[MENU_MAX + 1] = {
 		&xTaskHandleSetTimeDate, &xTaskHandleMainScreen, &xTaskHandleSetBrightness,
-		&xTaskHandleSetRFModule, &xTaskHandleMainScreen, &xTaskHandleTurnOff };
+		&xTaskHandleSetRFModule, &xTaskHandleSetupProgram, &xTaskHandleTurnOff };
 
 xTaskHandle * aDisplayTasks[DISP_TASKS_COUNT] = {
 		&xTaskHandleSetTimeDate, &xTaskHandleMainScreen, &xTaskHandleSetBrightness,
-		&xTaskHandleSetRFModule, &xTaskHandleMenuSelect };
+		&xTaskHandleSetRFModule, &xTaskHandleMenuSelect, &xTaskHandleSetupProgram };
 
 /* Global variables for temperature measuring */
 int32_t *psStartOfBuffer = NULL;
@@ -98,6 +99,7 @@ __ALIGN_BEGIN USBH_HOST USB_Host __ALIGN_END;
 /* Main Function, Program entry point */
 int main(void)
 {
+	uint8_t i = 0;
 	/* Ensure that all 4 interrupt priority bits are used as the pre-emption priority. */
 	NVIC_PriorityGroupConfig(NVIC_PriorityGroup_4 );
 
@@ -130,18 +132,20 @@ int main(void)
 	xSemaphoreTake(xSemaphoreRotaryIT, 0);
 
 	/* Create Tasks */
-	xTaskCreate( vTaskMainScreen, ( signed char * ) "MainScreen", 100, NULL, MAIN_SCREEN_PRIORITY,
+	xTaskCreate( vTaskMainScreen, ( signed char * ) "MainScreen", 100, NULL, DISPLAY_HANDLE_PRIORITY,
 			&xTaskHandleMainScreen);
-	xTaskCreate( vTaskMenuSelect, ( signed char * ) "MenuSelect", 70, NULL, MENU_SELECT_PRIORITY,
+	xTaskCreate( vTaskMenuSelect, ( signed char * ) "MenuSelect", 70, NULL, DISPLAY_HANDLE_PRIORITY,
 			&xTaskHandleMenuSelect);
-	xTaskCreate( vTaskSetTimeDate, ( signed char * ) "SetTimeDate", 100, NULL, SET_TIMEDATE_PRIORITY,
-			&xTaskHandleSetTimeDate);
+	xTaskCreate( vTaskSetTimeDate, ( signed char * ) "SetTimeDate", 100, NULL,
+			DISPLAY_HANDLE_PRIORITY, &xTaskHandleSetTimeDate);
 	xTaskCreate( vTaskSetBrightness, ( signed char * ) "SetBrightness", 70, NULL,
-			SET_BRIGHTNESS_PRIORITY, &xTaskHandleSetBrightness);
-	xTaskCreate( vTaskSetRFModule, ( signed char * ) "SetRF", 70, NULL, RFMODULE_PRIORITY,
+			DISPLAY_HANDLE_PRIORITY, &xTaskHandleSetBrightness);
+	xTaskCreate( vTaskSetRFModule, ( signed char * ) "SetRF", 70, NULL, DISPLAY_HANDLE_PRIORITY,
 			&xTaskHandleSetRFModule);
-	xTaskCreate( vTaskTurnOff, ( signed char * ) "Off", 20, NULL, TURNOFF_PRIORITY,
+	xTaskCreate( vTaskTurnOff, ( signed char * ) "Off", 20, NULL, DISPLAY_HANDLE_PRIORITY,
 			&xTaskHandleTurnOff);
+	xTaskCreate( vTaskSetupProgram, ( signed char * ) "Prg", 70, NULL, DISPLAY_HANDLE_PRIORITY,
+			&xTaskHandleSetupProgram);
 
 //	xTaskCreate( vTaskUSB, ( signed char * ) "USB", 300, NULL, USB_PRIORITY,
 //			&xTaskHandleUSB);
@@ -160,11 +164,9 @@ int main(void)
 	xTimerRotaryAllow = xTimerCreate((signed char *) "Rotary", ROTARY_PB_DENY, pdFALSE, (void *) 0,
 			vAllowRotary);
 
-	vTaskSuspend(xTaskHandleMainScreen);
-	vTaskSuspend(xTaskHandleMenuSelect);
-	vTaskSuspend(xTaskHandleSetTimeDate);
-	vTaskSuspend(xTaskHandleSetBrightness);
-	vTaskSuspend(xTaskHandleSetRFModule);
+	for(i = 0; i < DISP_TASKS_COUNT; i++)
+		vTaskSuspend(*aDisplayTasks[i]);
+
 	vTaskSuspend(xTaskHandleTurnOff);
 
 	/* Start the tasks and timer running. */
@@ -283,6 +285,7 @@ void vTaskMainScreen(void *pvParamters)
 	uint16_t prvBattVoltage;
 	uint16_t prvExtTemp;
 	uint8_t prvbSensPresent;
+	uint8_t cntr = 0;
 
 	/* Main loop for this task */
 	for(;;)
@@ -378,6 +381,7 @@ void vTaskMainScreen(void *pvParamters)
 				}
 			}
 			bUpdateNeed = 0;
+			DISP_BlockWrite(7, 0, cntr++);
 		}
 
 		/* Wait to receive element */
@@ -511,8 +515,7 @@ void vTaskMenuSelect(void *pvParamters)
 			else if(sReceivedValue == 0)
 			{
 				/* Clear display */
-				DISP_Clear();
-
+				//DISP_Clear();
 				/* Change to the selected menu */
 				vTaskResume(*aMenuTaskPtrs[sMenuPtr]);
 
@@ -876,6 +879,141 @@ void vTaskTurnOff(void *pvParameters)
 	PWR_EnterSTANDBYMode();
 }
 
+void vTaskSetupProgram(void *pvParameters)
+{
+	/* Local variables */
+	int8_t sReceivedValue;
+	uint16_t uIdleCntr = 0;
+	uint8_t bInitNeed = 1;
+	uint8_t hours = 0, mins = 0, repeat = 1, temp = 40;
+	uint8_t state = 0;
+
+	/* Main loop for this task */
+	for(;;)
+	{
+		/* Do some initialization */
+		if(bInitNeed)
+		{
+			DISP_StringWrite(3, 10, "Idopont:");
+			DISP_BlockWrite(3,93,0xff);
+			DISP_StringWriteInvert(3,88,"00");
+			DISP_StringWrite(3,100,":00");
+			DISP_StringWrite(5, 10, "Homerseklet:  20.0");
+			DISP_StringWrite(4, 10, "Ismetlodjon:  Igen");
+
+			bInitNeed = 0;
+		}
+
+		/* Wait for rotary action */
+		if(xQueueReceive(xQueueMenu, &sReceivedValue, MENU_UPDATE_FREQUENCY))
+		{
+			if(sReceivedValue != 0)
+			{
+				/* Rotation received */
+				switch(state)
+				{
+				case 0:
+					hours = prvLimit(hours + sReceivedValue, 0, 23);
+					DISP_CharWriteInvert(3, 88, ((uint8_t)(hours / 10 + '0')));
+					DISP_CharWriteInvert(3, 94, ((uint8_t)(hours % 10 + '0')));
+					break;
+				case 1:
+					mins = prvLimit(mins + sReceivedValue, 0, 59);
+					DISP_CharWriteInvert(3, 106, ((uint8_t)(mins / 10 + '0')));
+					DISP_CharWriteInvert(3, 112, ((uint8_t)(mins % 10 + '0')));
+					break;
+				case 2:
+					repeat = prvLimit(repeat + sReceivedValue, 0, 1);
+					if(repeat)
+						DISP_StringWriteInvert(4, 94, "Igen");
+					else
+						DISP_StringWriteInvert(4, 94, " Nem");
+					break;
+				case 3:
+					temp = prvLimit(temp + sReceivedValue, 20, 50);
+					DISP_CharWriteInvert(5, 94, (uint8_t)((temp >> 1) / 10 + '0'));
+					DISP_CharWriteInvert(5, 100, (uint8_t)((temp >> 1) % 10 + '0'));
+					DISP_CharWriteInvert(5, 106, '.');
+					if(temp & 1)
+						DISP_CharWriteInvert(5, 112, '5');
+					else
+						DISP_CharWriteInvert(5, 112, '0');
+					break;
+				default:
+					break;
+				}
+			}
+			else
+			{
+				/* Push button received */
+				switch(state)
+				{
+				case 0:
+					DISP_CharWrite(3, 88, ((uint8_t)(hours / 10 + '0')));
+					DISP_CharWrite(3, 94, ((uint8_t)(hours % 10 + '0')));
+					DISP_CharWriteInvert(3, 106, ((uint8_t)(mins / 10 + '0')));
+					DISP_CharWriteInvert(3, 112, ((uint8_t)(mins % 10 + '0')));
+					state++;
+					break;
+				case 1:
+					DISP_CharWrite(3, 106, ((uint8_t)(mins / 10 + '0')));
+					DISP_CharWrite(3, 112, ((uint8_t)(mins % 10 + '0')));
+					if(repeat)
+						DISP_StringWriteInvert(4, 94, "Igen");
+					else
+						DISP_StringWriteInvert(4, 94, " Nem");
+					state++;
+					break;
+				case 2:
+					if(repeat)
+						DISP_StringWrite(4, 94, "Igen");
+					else
+						DISP_StringWrite(4, 94, " Nem");
+					DISP_CharWriteInvert(5, 94, (uint8_t)((temp >> 1) / 10 + '0'));
+					DISP_CharWriteInvert(5, 100, (uint8_t)((temp >> 1) % 10 + '0'));
+					DISP_CharWriteInvert(5, 106, '.');
+					if(temp & 1)
+						DISP_CharWriteInvert(5, 112, '5');
+					else
+						DISP_CharWriteInvert(5, 112, '0');
+					state++;
+					break;
+				case 3:
+					state = 0;
+					hours = 0;
+					mins = 0;
+					repeat = 1;
+					temp = 40;
+					/* Clear display */
+					DISP_Clear();
+					bInitNeed = 1;
+
+					/* Return back to main screen task */
+					vTaskResume(xTaskHandleMainScreen);
+					vTaskSuspend(NULL );
+					break;
+				default:
+					break;
+				}
+			}
+			uIdleCntr = 0;
+		}
+		else
+		{
+			if(++uIdleCntr >= MENU_EXIT_COUNTER)
+			{
+				uIdleCntr = 0;
+				bInitNeed = 1;
+				DISP_Clear();
+
+				/* Change back to main screen task */
+				vTaskResume(xTaskHandleMainScreen);
+				vTaskSuspend(NULL );
+			}
+		}
+	}
+}
+
 /*-----------------------------------------------------------*/
 void prvTempStoreTask(void *pvParameters)
 {
@@ -958,7 +1096,7 @@ void prvTempStoreTask(void *pvParameters)
 					prvTempLimit = *psTempLimit;
 					xSemaphoreGive(xMutexTempLimit);
 
-					if(uAvgTemp < (prvTempLimit - (bIsHeatOn ? 0 : HYSTERESIS)))
+					if(uAvgTemp < (prvTempLimit - (bIsHeatOn ? (-1 * HYSTERESIS) : HYSTERESIS)))
 					{
 						if(bIsHeatOn == 0)
 						{
